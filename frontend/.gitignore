@@ -22,3 +22,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python venv
+backend/.venv/
+frontend/node_modules/
+__pycache__/
+*.pyc
+*.pyo
+
+#OS files
+.DS_Store
