@@ -7,7 +7,9 @@ GROUND_TRUTH = {
     "left.mp4": "LEFT",
     "right.mp4": "RIGHT",
     "center.mp4": "CENTER",
-    "down.mp4": "DOWN"
+    "down.mp4": "DOWN",
+    "up.mp4": "UP",
+
 }
 
 def compute_accuracy(csv_path, true_label):
