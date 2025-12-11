@@ -14,6 +14,12 @@ SMOOTH_WINDOW = 7           # you can tune 5–15 frames
 ALPHA = 0.5   # for exponential smoothing of numeric features
 WARMUP_FRAMES = 5
 
+BLINK_THRESHOLD = 7.5
+MIN_BLINK_FRAMES = 2
+
+blink_active = False
+blink_frame_count = 0
+total_blinks = 0
 
 smooth_buffer = deque(maxlen=SMOOTH_WINDOW)
 prev_hx = None
@@ -61,38 +67,23 @@ def get_eyelid_opening(lm, h):
 
 def classify_gaze_from_coordinates(hx, eyelid):
 
-    # Horizontal thresholds
-    if hx < 0.41:
-        h_status = "RIGHT"
-    elif hx > 0.58:
-        h_status = "LEFT"
-    else:
-        h_status = "CENTER"
 
-        # ---- Vertical from Eyelid Opening ----
-        # Lower eyelid opening means looking down
-    if eyelid < 12.0:  # tune based on your dataset
-        v_status = "DOWN"
-    elif eyelid > 14.0:
-        v_status = "UP"
-    else:
-        v_status = "CENTER"
+        # ----- 1. Horizontal FIRST -----
+    if hx < 0.44:  # adjust when we see your RIGHT data
+        return "RIGHT"
 
-        # ---- Priority ----
+    if hx > 0.56:  # from your LEFT dataset: hx > 0.588–0.620
+        return "LEFT"
 
-
-    if v_status == "DOWN":
+        # ----- 2. Vertical SECOND (only when horizontal is CENTER) -----
+    if eyelid < 12.0:
         return "DOWN"
-        # 2. UP overrides LEFT/RIGHT/CENTER
-    if h_status in ["LEFT", "RIGHT"]:
-        return h_status
 
-        # 3. Only if horizontal is CENTER check UP
-    if h_status == "CENTER" and v_status == "UP":
+    if eyelid > 15.0:
         return "UP"
 
-
-    return h_status
+        # ----- 3. If no threshold breaks -----
+    return "CENTER"
 
 
 # --- Main Processing Loop ---
@@ -136,6 +127,21 @@ for video_path in video_files:
                 # New coordinate-based gaze extraction
                 hx = get_horizontal_pos(lm, w)
                 eyelid = get_eyelid_opening(lm, h)
+
+                if eyelid < BLINK_THRESHOLD:
+                    blink_frame_count += 1
+
+                    if not blink_active and blink_frame_count >= MIN_BLINK_FRAMES:
+                        blink_active = True
+                else:
+                    if blink_active:
+                        total_blinks += 1
+                        print(f"Blink detected at frame {frame_count}")
+                    blink_active = False
+                    blink_frame_count = 0
+
+                blink_flag = "BLINK" if blink_active else "NONE"
+
                 # 1. Raw prediction
                 if prev_hx is None:
                     prev_hx = hx
@@ -166,6 +172,8 @@ for video_path in video_files:
                 #except:
                     #gaze = raw_gaze  # first few frames, buffer not filled yet
 
+                #if frame_count < 60:  # print first 60 frames
+                   # print(f"Frame {frame_count} | hx = {hx:.3f} | eyelid = {eyelid:.2f}")
 
 
 
@@ -185,9 +193,9 @@ for video_path in video_files:
             # Calculate Timestamp
             video_time = frame_count / fps
             if frame_count < WARMUP_FRAMES:
-                writer.writerow([f"{video_time:.3f}", frame_count, "WARMUP", "WARMUP", f"{prev_hx:.3f}", f"{prev_eyelid:.3f}"])
+                writer.writerow([f"{video_time:.3f}", frame_count, "WARMUP", "WARMUP", f"{prev_hx:.3f}", f"{prev_eyelid:.3f}",blink_flag])
             else:
-                writer.writerow([f"{video_time:.3f}", frame_count, raw_gaze, smooth_gaze, f"{prev_hx:.3f}", f"{prev_eyelid:.3f}"])
+                writer.writerow([f"{video_time:.3f}", frame_count, raw_gaze, smooth_gaze, f"{prev_hx:.3f}", f"{prev_eyelid:.3f}", blink_flag])
             #writer.writerow([
                 #f"{video_time:.3f}",
                 #frame_count,
