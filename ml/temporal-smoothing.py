@@ -6,9 +6,9 @@ import os
 import glob
 from collections import deque
 from collections import Counter
+from event_manager import SuspiciousEventManager
+from behavior_rules import BehaviorRules
 
-
-   # 7–frame smoothing
 
 SMOOTH_WINDOW = 7           # you can tune 5–15 frames
 ALPHA = 0.5   # for exponential smoothing of numeric features
@@ -36,8 +36,6 @@ face_mesh = mp.solutions.face_mesh.FaceMesh(
     max_num_faces=1,
     min_detection_confidence=0.5
 )
-
-
 # --- Math Helpers ---
 def get_horizontal_pos(lm, w):
     # Iris and corners
@@ -62,11 +60,7 @@ def get_eyelid_opening(lm, h):
 
     return abs(bottom - top)
 
-
-
-
 def classify_gaze_from_coordinates(hx, eyelid):
-
 
         # ----- 1. Horizontal FIRST -----
     if hx < 0.44:  # adjust when we see your RIGHT data
@@ -79,7 +73,7 @@ def classify_gaze_from_coordinates(hx, eyelid):
     if eyelid < 12.0:
         return "DOWN"
 
-    if eyelid > 15.0:
+    if eyelid > 14.0:
         return "UP"
 
         # ----- 3. If no threshold breaks -----
@@ -92,6 +86,7 @@ video_files = glob.glob(os.path.join(INPUT_FOLDER, "*.mp4"))
 if not video_files:
     print(f"No videos found in '{INPUT_FOLDER}' folder!")
 
+event_manager = SuspiciousEventManager()
 for video_path in video_files:
     filename = os.path.basename(video_path)
     print(f"Processing: {filename}...")
@@ -99,6 +94,9 @@ for video_path in video_files:
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     if fps == 0: fps = 30.0
+
+
+    behavior = BehaviorRules(fps, event_manager)
 
     csv_name = filename.replace(".mp4", ".csv")
     csv_path = os.path.join(OUTPUT_FOLDER, csv_name)
@@ -128,6 +126,8 @@ for video_path in video_files:
                 hx = get_horizontal_pos(lm, w)
                 eyelid = get_eyelid_opening(lm, h)
 
+
+
                 if eyelid < BLINK_THRESHOLD:
                     blink_frame_count += 1
 
@@ -150,65 +150,34 @@ for video_path in video_files:
                     prev_hx = ALPHA * hx + (1 - ALPHA) * prev_hx
                     prev_eyelid = ALPHA * eyelid + (1 - ALPHA) * prev_eyelid
 
+
                 raw_gaze = classify_gaze_from_coordinates(prev_hx, prev_eyelid)
                 # prefill on very first frame to avoid initial flicker:
-                if len(smooth_buffer) == 0:
-                    smooth_buffer.extend([raw_gaze] * SMOOTH_WINDOW)
-                else:
-                    smooth_buffer.append(raw_gaze)
+                smooth_buffer.append(raw_gaze)
 
                 smooth_gaze = Counter(smooth_buffer).most_common(1)[0][0]
-
-                # optionally skip warmup frames for logging/metrics:
-
-                # 2. Add to smoothing buffer
-               # smooth_buffer.append(raw_gaze)
-
-                # 3. Smoothed prediction = most common gaze in last N frames
-                #from statistics import mode
-
-               # try:
-                    #gaze = mode(smooth_buffer)
-                #except:
-                    #gaze = raw_gaze  # first few frames, buffer not filled yet
-
-                #if frame_count < 60:  # print first 60 frames
-                   # print(f"Frame {frame_count} | hx = {hx:.3f} | eyelid = {eyelid:.2f}")
-
-
+                print(f"[GAZE] smooth={smooth_gaze} raw={raw_gaze} hx={prev_hx:.3f} eyelid={prev_eyelid:.3f}")
 
             else:
                 gaze = "CENTER"
                 hx, eyelid = 0.5, 0.5
 
-                # --- CLASSIFICATION LOGIC ---
-                # Priority: Check Down first, then Left/Right
-                # --- STEP 1: Check Vertical INDEPENDENTLY ---
-                # Note: You MUST tune this 0.51 value.
-                # If your CSV says "Center" is 0.49, set this to 0.51.
-
-
-
-
             # Calculate Timestamp
             video_time = frame_count / fps
+
+
+            behavior.update(smooth_gaze, video_time)
+
             if frame_count < WARMUP_FRAMES:
                 writer.writerow([f"{video_time:.3f}", frame_count, "WARMUP", "WARMUP", f"{prev_hx:.3f}", f"{prev_eyelid:.3f}",blink_flag])
             else:
                 writer.writerow([f"{video_time:.3f}", frame_count, raw_gaze, smooth_gaze, f"{prev_hx:.3f}", f"{prev_eyelid:.3f}", blink_flag])
-            #writer.writerow([
-                #f"{video_time:.3f}",
-                #frame_count,
-                #raw_gaze,
-                #smooth_gaze,
-                #f"{hx:.3f}",
-                #f"{eyelid:.3f}"
-            #])
 
             frame_count += 1
 
     cap.release()
     print(f" -> Completed. Saved {csv_name}")
+    event_manager.save("suspicious_events.json")
 
 cv2.destroyAllWindows()
 print("All files processed.")
