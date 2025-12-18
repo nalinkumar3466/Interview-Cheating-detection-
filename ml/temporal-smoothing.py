@@ -80,16 +80,15 @@ def classify_gaze_from_coordinates(hx, eyelid):
     return "CENTER"
 
 
-# --- Main Processing Loop ---
-video_files = glob.glob(os.path.join(INPUT_FOLDER, "*.mp4"))
+#----Main Processing Loop----
 
-if not video_files:
-    print(f"No videos found in '{INPUT_FOLDER}' folder!")
+def analyze_single_video(video_path, output_folder=OUTPUT_FOLDER):
 
-event_manager = SuspiciousEventManager()
-for video_path in video_files:
+
     filename = os.path.basename(video_path)
     print(f"Processing: {filename}...")
+
+    event_manager = SuspiciousEventManager()
 
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -156,7 +155,7 @@ for video_path in video_files:
                 smooth_buffer.append(raw_gaze)
 
                 smooth_gaze = Counter(smooth_buffer).most_common(1)[0][0]
-                print(f"[GAZE] smooth={smooth_gaze} raw={raw_gaze} hx={prev_hx:.3f} eyelid={prev_eyelid:.3f}")
+
 
             else:
                 gaze = "CENTER"
@@ -179,5 +178,18 @@ for video_path in video_files:
     print(f" -> Completed. Saved {csv_name}")
     event_manager.save("suspicious_events.json")
 
-cv2.destroyAllWindows()
-print("All files processed.")
+    cv2.destroyAllWindows()
+    print("All files processed.")
+    behavior.finalize()
+    return event_manager.events
+
+if __name__ == "__main__":
+    video_files = glob.glob(os.path.join(INPUT_FOLDER, "*.mp4"))
+
+    for video in video_files:
+        events = analyze_single_video(video)
+        print(f"{video}: {len(events)} events")
+
+
+
+
