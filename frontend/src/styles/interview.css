@@ -1,0 +1,71 @@
+/* interview.css — UI polish for RunInterview */
+:root{
+  --bg: #f7f8fb;
+  --card: #ffffff;
+  --muted: #6b6f76;
+  --accent: #5b6cff;
+  --success: #26a65b;
+  --warning: #ff8a3d;
+  --shadow: 0 8px 24px rgba(35,40,80,0.06);
+}
+
+.runner-root{padding:24px; background:var(--bg); min-height:100vh}
+.runner-inner{max-width:1100px;margin:0 auto}
+.row-layout{display:flex;gap:20px;align-items:flex-start}
+
+/* Question palette */
+.question-palette{flex:0 0 360px}
+.palette-card{background:var(--card);border-radius:12px;padding:18px;box-shadow:var(--shadow);display:flex;gap:12px;align-items:flex-start}
+.artwork-sphere{width:140px;height:140px;border-radius:18px;background:conic-gradient(from 200deg at 50% 50%, #ff5fb4, #5b6cff, #2fb6ff, #ffb47a, #ff5fb4);display:flex;align-items:center;justify-content:center;box-shadow:0 12px 36px rgba(11,20,40,0.08)}
+.artwork-sphere::after{content:'';position:absolute;width:100%;height:100%;border-radius:18px;box-shadow:inset 0 18px 40px rgba(255,255,255,0.06)}
+.artwork-face{width:64px;height:64px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;color:#5b6cff;font-weight:700;box-shadow:0 8px 24px rgba(35,40,80,0.08)}
+
+/* pre-start overlay */
+.prestart-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.prestart-card{pointer-events:auto;background:var(--card);padding:22px 28px;border-radius:12px;box-shadow:0 30px 80px rgba(10,15,40,0.12);text-align:center}
+.prestart-title{font-weight:700;margin-bottom:8px}
+.prestart-seconds{font-size:48px;font-weight:900;color:var(--accent);margin-bottom:6px}
+.prestart-sub{color:var(--muted);font-size:13px}
+.palette-text{flex:1}
+.q-meta-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.q-meta{font-weight:600;color:#222}
+.tts-controls{display:flex;gap:8px}
+.icon-btn{background:transparent;border:none;padding:6px;border-radius:8px;cursor:pointer;color:var(--accent)}
+.icon-btn:hover{background:rgba(91,108,255,0.08)}
+.q-body{color:var(--muted);line-height:1.4}
+
+/* Live camera */
+.live-column{flex:1;display:flex;flex-direction:column;gap:12px}
+.live-card{background:var(--card);border-radius:12px;padding:14px;box-shadow:var(--shadow)}
+.live-title{font-weight:600;margin-bottom:8px}
+.live-frame{display:flex;justify-content:center;align-items:center;padding:8px}
+.camera-frame{width:100%;max-width:420px;height:320px;border-radius:12px;box-shadow:0 12px 36px rgba(11,20,40,0.08);background:#000;object-fit:cover;align-self:center}
+
+.status-pill-row{display:flex;justify-content:flex-end;margin-top:8px}
+.status-pill{padding:6px 10px;border-radius:999px;font-weight:600;font-size:13px;color:#fff}
+.status-pill.recording{background:linear-gradient(90deg,var(--accent),#3f7bff)}
+.status-pill.uploading{background:linear-gradient(90deg,#ff8a3d,#ffb47a)}
+.status-pill.idle{background:#e6eefb;color:#2b3a67}
+
+.decibel-indicator{display:flex;align-items:center;gap:12px;margin-top:10px}
+.decibel-bar{background:#eef1f6;border-radius:8px;flex:1;height:10px;overflow:hidden}
+.decibel-level{height:100%;background:linear-gradient(90deg,#5b6cff,#2fb6ff);border-radius:8px}
+.decibel-value{font-size:13px;color:var(--muted)}
+
+.answer-block{background:transparent}
+.answer-label{font-weight:600;margin-bottom:6px}
+.answer-note{padding:10px;border-radius:8px;background:#fff;border:1px solid #eef1f6;color:var(--muted)}
+
+.controls-row{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.timer-box{background:#fff;padding:8px 12px;border-radius:8px;box-shadow:0 4px 12px rgba(10,14,40,0.04);font-weight:600}
+
+/* Buttons */
+.btn-primary{background:var(--accent);color:#fff;padding:8px 12px;border-radius:8px;border:none;cursor:pointer}
+.btn-primary:hover{filter:brightness(1.03)}
+.btn-secondary{background:#fff;border:1px solid #e3e6ef;padding:8px 12px;border-radius:8px;cursor:pointer}
+
+/* small responsive tweaks */
+@media (max-width:900px){
+  .row-layout{flex-direction:column}
+  .question-palette{flex:unset;width:100%}
+}
