@@ -1,0 +1,44 @@
+[
+    {
+        "event": "WARMUP Gaze",
+        "start": 0.0,
+        "end": 0.5,
+        "details": "Duration 0.50 sec"
+    },
+    {
+        "event": "CENTER Gaze",
+        "start": 0.5,
+        "end": 6.4,
+        "details": "Duration 5.90 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 6.4,
+        "end": 7.4,
+        "details": "Duration 1.00 sec"
+    },
+    {
+        "event": "CENTER Gaze",
+        "start": 7.4,
+        "end": 10.2,
+        "details": "Duration 2.80 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 10.2,
+        "end": 11.0,
+        "details": "Duration 0.80 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 11.0,
+        "end": 11.3,
+        "details": "Duration 0.30 sec"
+    },
+    {
+        "event": "CENTER Gaze",
+        "start": 11.3,
+        "end": 14.3,
+        "details": "Duration 3.00 sec"
+    }
+]

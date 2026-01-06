@@ -1,0 +1,14 @@
+[
+    {
+        "event": "WARMUP Gaze",
+        "start": 0.0,
+        "end": 0.5,
+        "details": "Duration 0.50 sec"
+    },
+    {
+        "event": "LEFT Gaze",
+        "start": 0.5,
+        "end": 14.3,
+        "details": "Duration 13.80 sec"
+    }
+]
