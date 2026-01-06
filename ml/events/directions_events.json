@@ -1,0 +1,92 @@
+[
+    {
+        "event": "WARMUP Gaze",
+        "start": 0.0,
+        "end": 0.25,
+        "details": "Duration 0.25 sec"
+    },
+    {
+        "event": "CENTER Gaze",
+        "start": 0.25,
+        "end": 4.35,
+        "details": "Duration 4.10 sec"
+    },
+    {
+        "event": "UP Gaze",
+        "start": 4.35,
+        "end": 4.65,
+        "details": "Duration 0.30 sec"
+    },
+    {
+        "event": "LEFT Gaze",
+        "start": 4.65,
+        "end": 4.7,
+        "details": "Duration 0.05 sec"
+    },
+    {
+        "event": "CENTER Gaze",
+        "start": 4.7,
+        "end": 4.75,
+        "details": "Duration 0.05 sec"
+    },
+    {
+        "event": "Frequent Distraction",
+        "start": 4.35,
+        "end": 4.75,
+        "details": "3 rapid gaze switches (<2.0s)"
+    },
+    {
+        "event": "LEFT Gaze",
+        "start": 4.75,
+        "end": 5.4,
+        "details": "Duration 0.65 sec"
+    },
+    {
+        "event": "CENTER Gaze",
+        "start": 5.4,
+        "end": 5.95,
+        "details": "Duration 0.55 sec"
+    },
+    {
+        "event": "LEFT Gaze",
+        "start": 5.95,
+        "end": 6.95,
+        "details": "Duration 1.00 sec"
+    },
+    {
+        "event": "Frequent Distraction",
+        "start": 4.75,
+        "end": 6.95,
+        "details": "3 rapid gaze switches (<2.0s)"
+    },
+    {
+        "event": "CENTER Gaze",
+        "start": 6.95,
+        "end": 9.05,
+        "details": "Duration 2.10 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 9.05,
+        "end": 11.5,
+        "details": "Duration 2.45 sec"
+    },
+    {
+        "event": "Long Gaze Away",
+        "start": 9.05,
+        "end": 11.5,
+        "details": "RIGHT for 2.45 sec"
+    },
+    {
+        "event": "CENTER Gaze",
+        "start": 11.5,
+        "end": 12.75,
+        "details": "Duration 1.25 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 12.75,
+        "end": 14.65,
+        "details": "Duration 1.90 sec"
+    }
+]
