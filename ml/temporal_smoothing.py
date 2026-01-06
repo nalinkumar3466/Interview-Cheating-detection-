@@ -6,8 +6,8 @@ import os
 import glob
 from collections import deque
 from collections import Counter
-from event_manager import SuspiciousEventManager
-from behavior_rules import BehaviorRules
+from ml.event_manager import SuspiciousEventManager
+from ml.process_behavior_from_csv import BehaviorRulesFromCSV
 
 
 SMOOTH_WINDOW = 7           # you can tune 5–15 frames
@@ -17,17 +17,15 @@ WARMUP_FRAMES = 5
 BLINK_THRESHOLD = 7.5
 MIN_BLINK_FRAMES = 2
 
-blink_active = False
-blink_frame_count = 0
-total_blinks = 0
 
-smooth_buffer = deque(maxlen=SMOOTH_WINDOW)
-prev_hx = None
-prev_eyelid = None
+
+
 
 # --- Configuration ---
 INPUT_FOLDER = "samples"
 OUTPUT_FOLDER = "logs"
+
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 # Initialize MediaPipe
 face_mesh = mp.solutions.face_mesh.FaceMesh(
@@ -82,7 +80,14 @@ def classify_gaze_from_coordinates(hx, eyelid):
 
 #----Main Processing Loop----
 
+
+
 def analyze_single_video(video_path, output_folder=OUTPUT_FOLDER):
+
+
+    smooth_buffer = deque(maxlen=SMOOTH_WINDOW)
+    prev_hx = None
+    prev_eyelid = None
 
 
     filename = os.path.basename(video_path)
@@ -95,7 +100,7 @@ def analyze_single_video(video_path, output_folder=OUTPUT_FOLDER):
     if fps == 0: fps = 30.0
 
 
-    behavior = BehaviorRules(fps, event_manager)
+    behavior = BehaviorRulesFromCSV(fps, event_manager)
 
     csv_name = filename.replace(".mp4", ".csv")
     csv_path = os.path.join(OUTPUT_FOLDER, csv_name)
@@ -113,6 +118,11 @@ def analyze_single_video(video_path, output_folder=OUTPUT_FOLDER):
             frame = cv2.flip(frame, 1)
 
             h, w = frame.shape[:2]
+
+            smooth_gaze = "CENTER"
+            raw_gaze = "CENTER"
+            blink_flag = "NONE"
+
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = face_mesh.process(rgb)
 
@@ -125,7 +135,9 @@ def analyze_single_video(video_path, output_folder=OUTPUT_FOLDER):
                 hx = get_horizontal_pos(lm, w)
                 eyelid = get_eyelid_opening(lm, h)
 
-
+                total_blinks=0
+                blink_active = False
+                blink_frame_count = 0
 
                 if eyelid < BLINK_THRESHOLD:
                     blink_frame_count += 1
@@ -174,14 +186,19 @@ def analyze_single_video(video_path, output_folder=OUTPUT_FOLDER):
 
             frame_count += 1
 
+
     cap.release()
     print(f" -> Completed. Saved {csv_name}")
     event_manager.save("suspicious_events.json")
 
+    video_duration = frame_count / fps
+
     cv2.destroyAllWindows()
     print("All files processed.")
     behavior.finalize()
-    return event_manager.events
+    return event_manager.events, video_duration
+
+
 
 if __name__ == "__main__":
     video_files = glob.glob(os.path.join(INPUT_FOLDER, "*.mp4"))
