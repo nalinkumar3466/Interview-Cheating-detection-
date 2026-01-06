@@ -1,0 +1,27 @@
+[33mc373505[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mpupil-readings[m[33m)[m HEAD@{0}: reset: moving to HEAD~1
+[33med54150[m[33m ([m[1;31morigin/pupil-readings[m[33m)[m HEAD@{1}: checkout: moving from main to pupil-readings
+[33mc3ff9a9[m[33m ([m[1;32mmain[m[33m)[m HEAD@{2}: checkout: moving from pupil-readings to main
+[33med54150[m[33m ([m[1;31morigin/pupil-readings[m[33m)[m HEAD@{3}: commit: ple git push
+[33mc373505[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mpupil-readings[m[33m)[m HEAD@{4}: commit: Committing extras to pupil-readings
+[33m48ef69e[m HEAD@{5}: commit: Committing extras to pupil-readings
+[33med18a2f[m HEAD@{6}: commit: Added percentage, openai and database parts
+[33m8640bc6[m HEAD@{7}: reset: moving to HEAD
+[33m8640bc6[m HEAD@{8}: commit: added to git again
+[33m4372ada[m HEAD@{9}: commit: added to git again
+[33mba0568e[m HEAD@{10}: commit: Add pupil readings pipeline with datasets, logs, and sample videos
+[33med68ec7[m HEAD@{11}: commit: Add gitignore for IDE files, data outputs, and media
+[33md07e3e6[m HEAD@{12}: checkout: moving from main to pupil-readings
+[33mc3ff9a9[m[33m ([m[1;32mmain[m[33m)[m HEAD@{13}: checkout: moving from pupil-readings to main
+[33md07e3e6[m HEAD@{14}: commit: added obtaining video path for backend
+[33mac7c75c[m HEAD@{15}: commit: main runner to detect the events
+[33me34a07a[m HEAD@{16}: commit: added event detection with behavior rules
+[33m9d0d849[m HEAD@{17}: commit: created behavior rules:long away, frequent down, distraction, reading pattern
+[33me1f7473[m HEAD@{18}: commit: added blink detection and modified the thresholds
+[33mb23b0f0[m HEAD@{19}: commit: temporal smoothing done with warmup frames
+[33m13ab7b3[m HEAD@{20}: commit: added UP
+[33mfd9ef2d[m HEAD@{21}: commit: Used coordinates and added UP gaze
+[33m2e76def[m HEAD@{22}: commit (amend): add corrected gaze classification logic + accuracy metrics + fixed submodule issue
+[33m19bbe22[m HEAD@{23}: commit: Fix ml folder — removed accidental submodule
+[33m76fe102[m HEAD@{24}: commit: Add ML gaze detection module
+[33mc3ff9a9[m[33m ([m[1;32mmain[m[33m)[m HEAD@{25}: checkout: moving from main to pupil-readings
+[33mc3ff9a9[m[33m ([m[1;32mmain[m[33m)[m HEAD@{26}: clone: from https://github.com/nalinkumar3466/Interview-Cheating-detection-.git
