@@ -1,11 +1,27 @@
+import os
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from ml.db.models import Base
+from sqlalchemy.orm import sessionmaker, declarative_base
 
-DATABASE_URL = "sqlite:///analysis.db"  # replace later if needed
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(bind=engine)
+# Absolute path to ml/db directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def init_db():
-    Base.metadata.create_all(engine)
+DB_PATH = os.path.join(BASE_DIR, "interview_analysis.db")
+
+DATABASE_URL = f"sqlite:///{DB_PATH}"
+
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False}
+)
+
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine
+)
+
+Base = declarative_base()
+
+
+

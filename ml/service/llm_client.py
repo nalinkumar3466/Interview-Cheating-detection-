@@ -23,7 +23,7 @@ def generate_llm_analysis(event_percentages, risk_level):
         )
 
     prompt_lines.append(
-        "\nAnalyze the behaviors above and explain what they indicate."
+        "\nAnalyze the behaviors above and explain what they indicate in 3 lines only."
     )
     prompt_lines.append(
         f"End the response with: Overall Risk Level: {risk_level}"

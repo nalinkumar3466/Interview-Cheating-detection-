@@ -43,17 +43,22 @@ class InterviewAnalysisService:
             "analysis_report": analysis_report
         }
 
-def store_analysis_result(result):
+def store_analysis_result(result: dict):
     session = SessionLocal()
+    try:
+        record = InterviewAnalysis(
+            video_id=result["video_id"],
+            event_percentages=json.dumps(result["event_percentages"]),
+            analysis_report=result["analysis_report"],
+            risk_level=result["analysis_report"].split("Overall Risk Level:")[-1].strip()
+        )
+        session.add(record)
+        session.commit()
 
-    record = InterviewAnalysis(
-        video_id=result["video_id"],
-        event_percentages=result["event_percentages"],
-        analysis_report=result["analysis_report"],
-        risk_level=result["analysis_report"].split("Overall Risk Level:")[-1].strip()
-    )
-
-    session.add(record)
-    session.commit()
-    session.close()
+        print("Analysis result stored in database!")
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
 
