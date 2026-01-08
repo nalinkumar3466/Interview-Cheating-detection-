@@ -77,6 +77,9 @@ def classify_gaze_from_coordinates(hx, eyelid):
         # ----- 3. If no threshold breaks -----
     return "CENTER"
 
+def safe_float(val, default=0.0):
+    return default if val is None else val
+
 
 #----Main Processing Loop----
 
@@ -180,9 +183,9 @@ def analyze_single_video(video_path, output_folder=OUTPUT_FOLDER):
             behavior.update(smooth_gaze, video_time)
 
             if frame_count < WARMUP_FRAMES:
-                writer.writerow([f"{video_time:.3f}", frame_count, "WARMUP", "WARMUP", f"{prev_hx:.3f}", f"{prev_eyelid:.3f}",blink_flag])
+                writer.writerow([f"{video_time:.3f}", frame_count, "WARMUP", "WARMUP", f"{safe_float(prev_hx):.3f}", f"{safe_float(prev_eyelid):.3f}",blink_flag])
             else:
-                writer.writerow([f"{video_time:.3f}", frame_count, raw_gaze, smooth_gaze, f"{prev_hx:.3f}", f"{prev_eyelid:.3f}", blink_flag])
+                writer.writerow([f"{video_time:.3f}", frame_count, raw_gaze, smooth_gaze, f"{safe_float(prev_hx):.3f}", f"{safe_float(prev_eyelid):.3f}", blink_flag])
 
             frame_count += 1
 
@@ -196,7 +199,7 @@ def analyze_single_video(video_path, output_folder=OUTPUT_FOLDER):
     cv2.destroyAllWindows()
     print("All files processed.")
     behavior.finalize()
-    return event_manager.events, video_duration
+    return event_manager.events, video_duration, csv_path
 
 
 
