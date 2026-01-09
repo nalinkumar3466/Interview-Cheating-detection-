@@ -9,11 +9,16 @@ from app.models.interview import Interview as InterviewModel
 from app.schemas import InterviewCreate, Interview, InterviewOut, Question, QuestionPayload
 from app.models.recording import Recording
 from app.models.question import Question as QuestionModel
+from app.models.analysis import InterviewAnalysis
+from app.schemas_analysis import AnalysisOut
 import os
 from sqlalchemy import insert
 import uuid
 from datetime import datetime, timezone, timedelta
 import os
+import sys
+import subprocess
+import json
 from fastapi import BackgroundTasks
 import smtplib
 from email.message import EmailMessage
@@ -24,7 +29,7 @@ except Exception:
 
 router = APIRouter(prefix="/interviews", tags=["interviews"]) 
 logger = logging.getLogger(__name__)
-@router.post("/", response_model=InterviewOut, status_code=201)
+
 def _send_candidate_email(interview_id: int, token: str, candidate_email: str, base_url: str):
     try:
         smtp_host = os.getenv('SMTP_HOST')
@@ -52,6 +57,7 @@ def _send_candidate_email(interview_id: int, token: str, candidate_email: str, b
         logger.exception('Failed to send candidate email: %s', e)
 
 
+@router.post("/", response_model=InterviewOut, status_code=201)
 def create_interview(payload: InterviewCreate, db: Session = Depends(get_db), background_tasks: BackgroundTasks = None):
     logger.info('Received create_interview payload: %s', payload.json())
     # Normalize scheduled_at to UTC
@@ -220,6 +226,292 @@ def _uploads_dir():
     return upload_dir
 
 
+def _run_ml_pipeline(interview_id: int, video_path: str, db_session: Session = None):
+    """
+    Background task: Run ML pipeline on interview video.
+    
+    Args:
+        interview_id: Backend interview ID
+        video_path: Path to video file
+        db_session: Optional DB session for updates
+    """
+    logger.info(f"Starting ML pipeline for interview {interview_id}: {video_path}")
+    
+    try:
+        # Update analysis status to processing
+        if db_session:
+            analysis = db_session.query(InterviewAnalysis).filter(
+                InterviewAnalysis.interview_id == interview_id
+            ).first()
+            if analysis:
+                analysis.status = 'processing'
+                db_session.commit()
+        
+        # Prepare subprocess call with proper Python executable and module execution
+        cmd = [
+            sys.executable,
+            "-m",
+            "ml.service.final_pipeline",
+            video_path,
+            str(interview_id)
+        ]
+        
+        logger.info(f"Running command: {' '.join(cmd)}")
+        
+        # Run pipeline with timeout and capture output
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 minute timeout
+            cwd=os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
+        )
+        
+        if result.returncode != 0:
+            error_msg = result.stderr or "Unknown error"
+            logger.error(f"Pipeline failed: {error_msg}")
+            
+            # Update analysis status to failed
+            if db_session:
+                analysis = db_session.query(InterviewAnalysis).filter(
+                    InterviewAnalysis.interview_id == interview_id
+                ).first()
+                if analysis:
+                    analysis.status = 'failed'
+                    analysis.error_message = error_msg
+                    db_session.commit()
+            return
+        
+        # Parse successful output
+        try:
+            output = json.loads(result.stdout)
+            logger.info(f"Pipeline output: {output}")
+        except json.JSONDecodeError:
+            logger.warning(f"Could not parse pipeline output: {result.stdout}")
+        
+        logger.info(f"✅ ML pipeline completed for interview {interview_id}")
+        
+    except subprocess.TimeoutExpired:
+        logger.error(f"ML pipeline timeout for interview {interview_id}")
+        if db_session:
+            analysis = db_session.query(InterviewAnalysis).filter(
+                InterviewAnalysis.interview_id == interview_id
+            ).first()
+            if analysis:
+                analysis.status = 'failed'
+                analysis.error_message = "Pipeline execution timeout (>10 minutes)"
+                db_session.commit()
+    except Exception as e:
+        logger.exception(f"Error running ML pipeline for interview {interview_id}: {str(e)}")
+        if db_session:
+            analysis = db_session.query(InterviewAnalysis).filter(
+                InterviewAnalysis.interview_id == interview_id
+            ).first()
+            if analysis:
+                analysis.status = 'failed'
+                analysis.error_message = str(e)
+                db_session.commit()
+
+
+# -------------------- Analysis endpoints --------------------
+
+@router.post("/{interview_id}/analyze")
+def trigger_analysis(
+    interview_id: int,
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None
+):
+    """
+    Manually trigger ML analysis for an interview.
+    
+    Returns analysis record with status 'processing'.
+    """
+    try:
+        # Check interview exists
+        interview = db.query(InterviewModel).filter(
+            InterviewModel.id == interview_id
+        ).first()
+        if not interview:
+            raise HTTPException(status_code=404, detail='Interview not found')
+        
+        # Get or create analysis record
+        analysis = db.query(InterviewAnalysis).filter(
+            InterviewAnalysis.interview_id == interview_id
+        ).first()
+        
+        if analysis and analysis.status == 'processing':
+            raise HTTPException(
+                status_code=400,
+                detail='Analysis already in progress for this interview'
+            )
+        
+        # Find video file for this interview
+        recordings = db.query(Recording).filter(
+            Recording.interview_id == interview_id
+        ).all()
+        
+        if not recordings:
+            raise HTTPException(
+                status_code=400,
+                detail='No recordings found for this interview'
+            )
+        
+        # Use first recording's video path
+        video_path = recordings[0].file_path
+        
+        if not os.path.exists(video_path):
+            raise HTTPException(
+                status_code=400,
+                detail=f'Video file not found: {video_path}'
+            )
+        
+        # Create or update analysis record
+        if not analysis:
+            analysis = InterviewAnalysis(
+                interview_id=interview_id,
+                status='pending'
+            )
+            db.add(analysis)
+            db.commit()
+            db.refresh(analysis)
+        else:
+            analysis.status = 'pending'
+            analysis.error_message = None
+            db.commit()
+        
+        # Trigger background task
+        if background_tasks:
+            background_tasks.add_task(
+                _run_ml_pipeline,
+                interview_id,
+                video_path,
+                SessionLocal()
+            )
+        
+        logger.info(f"Analysis queued for interview {interview_id}")
+        
+        return {
+            "status": "queued",
+            "interview_id": interview_id,
+            "analysis_id": analysis.id,
+            "message": "Analysis scheduled. Results will be available shortly."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error triggering analysis for interview {interview_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{interview_id}/analysis", response_model=AnalysisOut)
+def get_analysis(
+    interview_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Fetch analysis results for an interview.
+    
+    Returns analysis record with status and results.
+    """
+    try:
+        # Check interview exists
+        interview = db.query(InterviewModel).filter(
+            InterviewModel.id == interview_id
+        ).first()
+        if not interview:
+            raise HTTPException(status_code=404, detail='Interview not found')
+        
+        # Get analysis record
+        analysis = db.query(InterviewAnalysis).filter(
+            InterviewAnalysis.interview_id == interview_id
+        ).first()
+        
+        if not analysis:
+            raise HTTPException(
+                status_code=404,
+                detail='No analysis found for this interview. Trigger analysis using /interviews/{id}/analyze'
+            )
+        
+        return analysis
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error fetching analysis for interview {interview_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{interview_id}/complete-with-analysis")
+def complete_interview_with_analysis(
+    interview_id: int,
+    file: UploadFile = File(...),
+    answer: str = Form(None),
+    question_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks = None
+):
+    """
+    Complete interview (save recording) and automatically trigger ML analysis.
+    
+    This is a convenience endpoint that combines recording upload with analysis.
+    """
+    try:
+        # Save recording
+        upload_dir = _uploads_dir()
+        filename = f"interview_{interview_id}_{int(time.time())}_{file.filename}"
+        save_path = os.path.join(upload_dir, filename)
+        
+        with open(save_path, 'wb') as f:
+            f.write(file.file.read())
+        
+        rec = Recording(
+            interview_id=interview_id,
+            question_id=question_id,
+            file_path=save_path,
+            answer_text=answer
+        )
+        db.add(rec)
+        db.commit()
+        db.refresh(rec)
+        
+        logger.info(f"Recording saved: {save_path}")
+        
+        # Create analysis record
+        analysis = db.query(InterviewAnalysis).filter(
+            InterviewAnalysis.interview_id == interview_id
+        ).first()
+        
+        if not analysis:
+            analysis = InterviewAnalysis(
+                interview_id=interview_id,
+                status='pending'
+            )
+            db.add(analysis)
+            db.commit()
+        
+        # Trigger background analysis task
+        if background_tasks:
+            background_tasks.add_task(
+                _run_ml_pipeline,
+                interview_id,
+                save_path,
+                SessionLocal()
+            )
+        
+        return {
+            "status": "ok",
+            "recording_id": rec.id,
+            "file_path": save_path,
+            "analysis_queued": True,
+            "analysis_id": analysis.id
+        }
+        
+    except Exception as e:
+        logger.exception(f"Error in complete_interview_with_analysis: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # -------------------- Candidate endpoints (token-limited) --------------------
 from app.models.candidatelog import CandidateLog
 from fastapi import Header, Body
@@ -277,7 +569,7 @@ def candidate_answer(interview_id: int, question_id: int | None = Form(None), an
 
 
 @router.post('/candidate/interviews/{interview_id}/complete')
-def candidate_complete(interview_id: int, file: UploadFile = File(...), answer: str = Form(None), question_id: int | None = Form(None), x_candidate_token: str | None = Header(None), db: Session = Depends(get_db)):
+def candidate_complete(interview_id: int, file: UploadFile = File(...), answer: str = Form(None), question_id: int | None = Form(None), x_candidate_token: str | None = Header(None), db: Session = Depends(get_db), background_tasks: BackgroundTasks = None):
     ok, interview = _validate_token(db, x_candidate_token, interview_id)
     if not ok:
         raise HTTPException(status_code=403, detail='Invalid candidate token')
@@ -291,6 +583,11 @@ def candidate_complete(interview_id: int, file: UploadFile = File(...), answer: 
     db.add(rec)
     db.commit()
     db.refresh(rec)
+
+    # Trigger automatic analysis in background
+    if background_tasks is not None:
+        background_tasks.add_task(run_analysis_background, interview_id)
+
     return {'status': 'ok', 'recording_id': rec.id, 'file_path': save_path}
 
 
@@ -313,6 +610,43 @@ def candidate_log(payload: dict = Body(...), db: Session = Depends(get_db)):
     db.refresh(cl)
     return {'status': 'logged', 'id': cl.id, 'valid_token': ok}
 
+
+
+def run_ml_analysis(video_path: str, interview_id: int, recording_id: int):
+    """Run the advanced ML analysis pipeline on a single video using subprocess."""
+    import subprocess
+    import json
+    from pathlib import Path
+
+    script_path = Path(__file__).parent / 'single_analysis.py'
+    result = subprocess.run([
+        sys.executable, str(script_path),
+        video_path, str(interview_id), str(recording_id)
+    ], cwd=Path(__file__).parent.parent, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        raise RuntimeError(f"Analysis failed: {result.stderr}")
+
+    # Parse the JSON output
+    analysis = json.loads(result.stdout.strip())
+    return analysis
+
+
+def run_analysis_background(interview_id: int):
+    """Background task to run analysis after interview completion."""
+    try:
+        db = SessionLocal()
+        rec = db.query(Recording).filter(Recording.interview_id == interview_id).order_by(Recording.created_at.desc()).first()
+        if rec:
+            analysis = run_ml_analysis(rec.file_path, interview_id, rec.id)
+            upload_dir = _uploads_dir()
+            analysis_file = os.path.join(upload_dir, f"analysis_{interview_id}.json")
+            with open(analysis_file, 'w', encoding='utf-8') as f:
+                json.dump(analysis, f)
+            logger.info(f"Background analysis completed for interview {interview_id}")
+        db.close()
+    except Exception as e:
+        logger.exception(f"Background analysis failed for interview {interview_id}: {e}")
 
 
 @router.get("/{interview_id}/recordings")
@@ -340,12 +674,9 @@ def analyze_interview(interview_id: int, db: Session = Depends(get_db)):
     if not rec:
         raise HTTPException(status_code=404, detail='No recordings found for this interview')
 
-    # Run ML analyzer (MediaPipe-based) on the recording
+    # Run advanced ML analyzer on the recording
     try:
-        from app.api.analyzer import analyze_video
-        analysis = analyze_video(rec.file_path)
-        # attach recording id for reference
-        analysis["recording_id"] = rec.id
+        analysis = run_ml_analysis(rec.file_path, interview_id, rec.id)
     except Exception as e:
         logger.exception("Analysis failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")

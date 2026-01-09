@@ -97,7 +97,18 @@ export default function ScheduleInterview(){
 			setQuestions([])
 		}catch(err){
 			console.error('Schedule submit error:', err)
-			const msg = err?.response?.data?.detail || err?.message || 'Error scheduling'
+			let msg = 'Error scheduling'
+			if (err?.response?.data?.detail) {
+				if (Array.isArray(err.response.data.detail)) {
+					msg = err.response.data.detail.map(e => typeof e === 'object' ? (e.msg || e.message || JSON.stringify(e)) : e).join(', ')
+				} else if (typeof err.response.data.detail === 'object') {
+					msg = err.response.data.detail.msg || err.response.data.detail.message || JSON.stringify(err.response.data.detail)
+				} else {
+					msg = err.response.data.detail
+				}
+			} else if (err?.message) {
+				msg = err.message
+			}
 			setMessage(`Error scheduling: ${msg}`)
 		}finally{ setSubmitting(false) }
 	}

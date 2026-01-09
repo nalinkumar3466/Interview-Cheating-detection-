@@ -1,64 +1,76 @@
 # ml/service/analyzer.py
 
 import json
+import logging
 from pathlib import Path
-from ml.service.event_percentage_calculator import convert_events_to_percentages
-from ml.service.risk_calculator import (
-    compute_effective_risk_percentage,
-    classify_risk_level
-)
-from ml.service.llm_client import generate_llm_analysis
 
-from ml.db.database import SessionLocal
-from ml.db.models import InterviewAnalysis
+logger = logging.getLogger(__name__)
 
 
-class InterviewAnalysisService:
+def store_analysis_result_ml_db(result: dict):
+    """Store analysis in ML database (SQLite)"""
+    try:
+        from ml.db.database import SessionLocal
+        from ml.db.models import InterviewAnalysis
+        
+        session = SessionLocal()
+        try:
+            record = InterviewAnalysis(
+                video_id=result.get("video_id", "unknown"),
+                event_percentages=json.dumps(result.get("event_percentages", {})),
+                analysis_report=result.get("analysis_report", ""),
+                risk_level=result.get("risk_level", "unknown")
+            )
+            session.add(record)
+            session.commit()
+            logger.info("Analysis result stored in ML database!")
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+    except ImportError:
+        logger.warning("ML database not available, skipping ML DB storage")
 
-    def analyze_from_event_json(
-        self,
-        event_json_path: str,
-        video_duration: float,
-        video_id: str
-    ) -> dict:
-        """
-        Entry point AFTER behavior detection.
-        """
-
-
-        event_percentages = convert_events_to_percentages(
-            event_json_path="ml/events/interviewsample1_events.json",
-            video_duration=video_duration
-        )
-
-        effective_percentage = compute_effective_risk_percentage(event_percentages)
-
-        risk_level = classify_risk_level(effective_percentage)
-
-        analysis_report = generate_llm_analysis(event_percentages, risk_level)
-
-        return {
-            "video_id": video_id,
-            "event_percentages": event_percentages,
-            "analysis_report": analysis_report
-        }
 
 def store_analysis_result(result: dict):
-    session = SessionLocal()
+    """
+    Store analysis in backend database.
+    
+    Args:
+        result: dict containing:
+            - interview_id: int
+            - video_id: str
+            - event_percentages: dict
+            - analysis_report: str
+            - risk_level: str
+            - effective_risk_percentage: float
+    """
     try:
-        record = InterviewAnalysis(
-            video_id=result["video_id"],
-            event_percentages=json.dumps(result["event_percentages"]),
-            analysis_report=result["analysis_report"],
-            risk_level=result["analysis_report"].split("Overall Risk Level:")[-1].strip()
-        )
-        session.add(record)
-        session.commit()
+        from app.core.database import SessionLocal
+        from app.models.analysis import InterviewAnalysis
+        
+        session = SessionLocal()
+        try:
+            record = InterviewAnalysis(
+                interview_id=result["interview_id"],
+                status="completed",
+                event_percentages=json.dumps(result.get("event_percentages", {})),
+                analysis_report=result.get("analysis_report", ""),
+                risk_level=result.get("risk_level", "medium"),
+                effective_risk_percentage=result.get("effective_risk_percentage", 0.0)
+            )
+            session.add(record)
+            session.commit()
+            logger.info(f"Analysis stored for interview {result['interview_id']}")
+        except Exception as e:
+            session.rollback()
+            logger.exception(f"Error storing analysis: {e}")
+            raise
+        finally:
+            session.close()
+    except ImportError as e:
+        logger.warning(f"Backend database not available: {e}, trying ML DB instead")
+        store_analysis_result_ml_db(result)
 
-        print("Analysis result stored in database!")
-    except Exception as e:
-        session.rollback()
-        raise e
-    finally:
-        session.close()
 
