@@ -3,7 +3,12 @@ from openai import RateLimitError
 import json
 import os
 
-client = OpenAI()
+# Initialize client only when needed
+def get_openai_client():
+    try:
+        return OpenAI()
+    except Exception:
+        return None
 
 def generate_llm_analysis(event_percentages, risk_level):
     """
@@ -32,6 +37,10 @@ def generate_llm_analysis(event_percentages, risk_level):
     prompt = "\n".join(prompt_lines)
 
     try:
+        client = get_openai_client()
+        if client is None:
+            return fallback_analysis(event_percentages)
+
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
@@ -40,10 +49,8 @@ def generate_llm_analysis(event_percentages, risk_level):
         return response.choices[0].message.content.strip()
 
     except Exception as e:
-        return (
-            "Automated analysis unavailable due to system limits.\n\n"
-            f"Overall Risk Level: {risk_level}"
-        )
+        # Use fallback analysis when OpenAI is not available
+        return fallback_analysis(event_percentages)
 
 
 def fallback_analysis(event_percentages):
@@ -70,8 +77,3 @@ def fallback_analysis(event_percentages):
         "Automated analysis based on behavioral statistics.\n"
         f"Overall risk level: {level}."
     )
-
-
-
-
-

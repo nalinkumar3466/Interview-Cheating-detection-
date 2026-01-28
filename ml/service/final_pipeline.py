@@ -4,7 +4,19 @@ import csv
 import json
 import sys
 import logging
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
 from pathlib import Path
+# Ensure backend is on PYTHONPATH for subprocess runs
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_PATH = PROJECT_ROOT / "backend"
+
+if str(BACKEND_PATH) not in sys.path:
+    sys.path.insert(0, str(BACKEND_PATH))
+
 
 from ml.temporal_smoothing import analyze_single_video
 from ml.process_behavior_from_csv import (
@@ -20,6 +32,7 @@ from ml.service.risk_calculator import (
     compute_effective_risk_percentage,
     classify_risk_level
 )
+
 
 # ==============================
 # LOGGING SETUP
@@ -126,8 +139,9 @@ def analyze_interview(video_path: str, interview_id: int) -> dict:
         # STEP 6: STORE IN DATABASE
         # --------------------------------------------------
         logger.info("Step 6: Storing analysis in database")
+        video_id = f"interview_{interview_id}"
         result = {
-            "interview_id": interview_id,
+            "interview_id": interview_id, 
             "video_id": video_id,
             "event_percentages": event_percentages,
             "analysis_report": analysis_report,
@@ -146,36 +160,45 @@ def analyze_interview(video_path: str, interview_id: int) -> dict:
 
 
 def main():
-    """Entry point for CLI usage"""
-    if len(sys.argv) < 2:
-        logger.error("Usage: python -m ml.service.final_pipeline <video_path> [interview_id]")
-        logger.error("If interview_id not provided, defaults to 0 (development mode)")
-        sys.exit(1)
-    
-    video_path = sys.argv[1]
-    interview_id = int(sys.argv[2]) if len(sys.argv) > 2 else 0
-    
-    try:
-        result = analyze_interview(video_path, interview_id)
-        logger.info(f"Analysis complete: {result['video_id']}")
-        print(json.dumps({
-            "status": "success",
-            "interview_id": interview_id,
-            "risk_level": result["risk_level"],
-            "effective_percentage": result["effective_risk_percentage"]
-        }))
-    except Exception as e:
-        logger.error(f"Pipeline failed: {str(e)}")
-        print(json.dumps({
-            "status": "error",
-            "interview_id": interview_id,
-            "error": str(e)
-        }))
-        sys.exit(1)
+        """Entry point for CLI usage"""
 
+        if len(sys.argv) < 2:
+            logger.error("Usage: python -m ml.service.final_pipeline <video_path> [interview_id]")
+            sys.exit(1)
 
-# ==============================
-# ENTRY POINT
+        video_path = sys.argv[1]
+
+        interview_id = 0
+        if len(sys.argv) > 2:
+            try:
+                interview_id = int(sys.argv[2])
+            except ValueError:
+                logger.warning("Invalid interview_id, defaulting to 0")
+
+        try:
+            result = analyze_interview(video_path, interview_id)
+
+            logger.info(f"Analysis complete: interview {interview_id}")
+
+            print(json.dumps({
+                "status": "success",
+                "interview_id": interview_id,
+                "risk_level": result["risk_level"],
+                "effective_percentage": result["effective_risk_percentage"]
+            }))
+
+        except Exception as e:
+            logger.error(f"Pipeline failed: {str(e)}")
+
+            print(json.dumps({
+                "status": "error",
+                "interview_id": interview_id,
+                "error": str(e)
+            }))
+
+            sys.exit(1)
+
+ # ENTRY POINT
 # ==============================
 if __name__ == "__main__":
     main()

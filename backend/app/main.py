@@ -4,6 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.api.routes import interviews
 from app.core.database import Base, engine
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
 import logging
 
 logging.getLogger().info("DATABASE engine url: %s", getattr(engine, "url", "<unknown>"))

@@ -1,18 +1,22 @@
+# ml/db/database.py
+
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
 
-# Absolute path to ml/db directory
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-DB_PATH = os.path.join(BASE_DIR, "interview_analysis.db")
-
-DATABASE_URL = f"sqlite:///{DB_PATH}"
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL not set for ML pipeline")
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False}
+    pool_pre_ping=True,
+    future=True
 )
 
 SessionLocal = sessionmaker(
@@ -22,6 +26,3 @@ SessionLocal = sessionmaker(
 )
 
 Base = declarative_base()
-
-
-

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 import logging
 from typing import List
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.core.database import get_db, engine, Base, SessionLocal
 import time
@@ -19,7 +20,6 @@ import os
 import sys
 import subprocess
 import json
-from fastapi import BackgroundTasks
 import smtplib
 from email.message import EmailMessage
 try:
@@ -226,28 +226,29 @@ def _uploads_dir():
     return upload_dir
 
 
-def _run_ml_pipeline(interview_id: int, video_path: str, db_session: Session = None):
-    """
-    Background task: Run ML pipeline on interview video.
-    
-    Args:
-        interview_id: Backend interview ID
-        video_path: Path to video file
-        db_session: Optional DB session for updates
-    """
-    logger.info(f"Starting ML pipeline for interview {interview_id}: {video_path}")
-    
+def _run_ml_pipeline(interview_id: int, video_path: str):
+    db_session = SessionLocal()
     try:
-        # Update analysis status to processing
-        if db_session:
-            analysis = db_session.query(InterviewAnalysis).filter(
-                InterviewAnalysis.interview_id == interview_id
-            ).first()
-            if analysis:
-                analysis.status = 'processing'
-                db_session.commit()
-        
-        # Prepare subprocess call with proper Python executable and module execution
+        logger.info(f"Starting ML pipeline for interview {interview_id}")
+
+        # Mark processing
+        analysis = db_session.query(InterviewAnalysis)\
+            .filter(InterviewAnalysis.interview_id == interview_id)\
+            .first()
+
+        if analysis:
+            analysis.status = "processing"
+            db_session.commit()
+
+        # Prepare env
+        env = os.environ.copy()
+
+        PROJECT_ROOT = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), '..', '..', '..', '..')
+        )
+
+        env["PYTHONPATH"] = os.path.join(PROJECT_ROOT, "backend")
+
         cmd = [
             sys.executable,
             "-m",
@@ -255,191 +256,171 @@ def _run_ml_pipeline(interview_id: int, video_path: str, db_session: Session = N
             video_path,
             str(interview_id)
         ]
-        
-        logger.info(f"Running command: {' '.join(cmd)}")
-        
-        # Run pipeline with timeout and capture output
+
+        logger.info(f"Running: {' '.join(cmd)}")
+
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=600,  # 10 minute timeout
-            cwd=os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
+            timeout=600,
+            cwd=PROJECT_ROOT,
+            env=env,
+            check=True
         )
-        
-        if result.returncode != 0:
-            error_msg = result.stderr or "Unknown error"
-            logger.error(f"Pipeline failed: {error_msg}")
-            
-            # Update analysis status to failed
-            if db_session:
-                analysis = db_session.query(InterviewAnalysis).filter(
-                    InterviewAnalysis.interview_id == interview_id
-                ).first()
-                if analysis:
-                    analysis.status = 'failed'
-                    analysis.error_message = error_msg
-                    db_session.commit()
-            return
-        
-        # Parse successful output
-        try:
-            output = json.loads(result.stdout)
-            logger.info(f"Pipeline output: {output}")
-        except json.JSONDecodeError:
-            logger.warning(f"Could not parse pipeline output: {result.stdout}")
-        
-        logger.info(f"✅ ML pipeline completed for interview {interview_id}")
-        
-    except subprocess.TimeoutExpired:
-        logger.error(f"ML pipeline timeout for interview {interview_id}")
-        if db_session:
-            analysis = db_session.query(InterviewAnalysis).filter(
-                InterviewAnalysis.interview_id == interview_id
-            ).first()
-            if analysis:
-                analysis.status = 'failed'
-                analysis.error_message = "Pipeline execution timeout (>10 minutes)"
-                db_session.commit()
-    except Exception as e:
-        logger.exception(f"Error running ML pipeline for interview {interview_id}: {str(e)}")
-        if db_session:
-            analysis = db_session.query(InterviewAnalysis).filter(
-                InterviewAnalysis.interview_id == interview_id
-            ).first()
-            if analysis:
-                analysis.status = 'failed'
-                analysis.error_message = str(e)
-                db_session.commit()
 
+        logger.info(result.stdout)
+
+        # Reload DB result
+        analysis = db_session.query(InterviewAnalysis)\
+            .filter(InterviewAnalysis.interview_id == interview_id)\
+            .order_by(InterviewAnalysis.created_at.desc())\
+            .first()
+
+        if analysis:
+            analysis.status = "completed"
+            db_session.commit()
+
+        logger.info(f"ML completed for interview {interview_id}")
+
+    except subprocess.CalledProcessError as e:
+        logger.error(e.stderr)
+
+        analysis = db_session.query(InterviewAnalysis)\
+            .filter(InterviewAnalysis.interview_id == interview_id)\
+            .first()
+
+        if analysis:
+            analysis.status = "failed"
+            analysis.error_message = e.stderr
+            db_session.commit()
+
+    except Exception as e:
+        logger.exception(e)
+
+        analysis = db_session.query(InterviewAnalysis)\
+            .filter(InterviewAnalysis.interview_id == interview_id)\
+            .first()
+
+        if analysis:
+            analysis.status = "failed"
+            analysis.error_message = str(e)
+            db_session.commit()
+
+    finally:
+        db_session.close()
 
 # -------------------- Analysis endpoints --------------------
 
-@router.post("/{interview_id}/analyze")
+class AnalysisPayload(BaseModel):
+    interview_id: int
+
+@router.post("/analyze")
 def trigger_analysis(
-    interview_id: int,
-    db: Session = Depends(get_db),
-    background_tasks: BackgroundTasks = None
+    payload: AnalysisPayload,
+    db: Session = Depends(get_db)
 ):
-    """
-    Manually trigger ML analysis for an interview.
-    
-    Returns analysis record with status 'processing'.
-    """
+
+    # Check interview
+    interview = db.query(InterviewModel)\
+        .filter(InterviewModel.id == payload.interview_id)\
+        .first()
+
+    if not interview:
+        raise HTTPException(404, "Interview not found")
+
+    # Get recording
+    recording = db.query(Recording)\
+        .filter(Recording.interview_id == payload.interview_id)\
+        .first()
+
+    if not recording:
+        raise HTTPException(400, "No recordings found")
+
+    video_path = recording.file_path
+
+    if not os.path.exists(video_path):
+        raise HTTPException(400, f"Video not found: {video_path}")
+
+    # Get/create analysis row
+    analysis = db.query(InterviewAnalysis)\
+        .filter(InterviewAnalysis.interview_id == payload.interview_id)\
+        .first()
+
+    if not analysis:
+        analysis = InterviewAnalysis(
+            interview_id=payload.interview_id,
+            status="pending"
+        )
+        db.add(analysis)
+        db.commit()
+        db.refresh(analysis)
+
+    # RUN ML (blocking)
+    _run_ml_pipeline(payload.interview_id, video_path)
+
+    # Reload result
+    analysis = db.query(InterviewAnalysis)\
+        .filter(InterviewAnalysis.interview_id == payload.interview_id)\
+        .order_by(InterviewAnalysis.created_at.desc())\
+        .first()
+
+    if not analysis:
+        raise HTTPException(500, "Analysis failed")
+
     try:
-        # Check interview exists
-        interview = db.query(InterviewModel).filter(
-            InterviewModel.id == interview_id
-        ).first()
-        if not interview:
-            raise HTTPException(status_code=404, detail='Interview not found')
-        
-        # Get or create analysis record
-        analysis = db.query(InterviewAnalysis).filter(
-            InterviewAnalysis.interview_id == interview_id
-        ).first()
-        
-        if analysis and analysis.status == 'processing':
-            raise HTTPException(
-                status_code=400,
-                detail='Analysis already in progress for this interview'
-            )
-        
-        # Find video file for this interview
-        recordings = db.query(Recording).filter(
-            Recording.interview_id == interview_id
-        ).all()
-        
-        if not recordings:
-            raise HTTPException(
-                status_code=400,
-                detail='No recordings found for this interview'
-            )
-        
-        # Use first recording's video path
-        video_path = recordings[0].file_path
-        
-        if not os.path.exists(video_path):
-            raise HTTPException(
-                status_code=400,
-                detail=f'Video file not found: {video_path}'
-            )
-        
-        # Create or update analysis record
-        if not analysis:
-            analysis = InterviewAnalysis(
-                interview_id=interview_id,
-                status='pending'
-            )
-            db.add(analysis)
-            db.commit()
-            db.refresh(analysis)
-        else:
-            analysis.status = 'pending'
-            analysis.error_message = None
-            db.commit()
-        
-        # Trigger background task
-        if background_tasks:
-            background_tasks.add_task(
-                _run_ml_pipeline,
-                interview_id,
-                video_path,
-                SessionLocal()
-            )
-        
-        logger.info(f"Analysis queued for interview {interview_id}")
-        
-        return {
-            "status": "queued",
-            "interview_id": interview_id,
-            "analysis_id": analysis.id,
-            "message": "Analysis scheduled. Results will be available shortly."
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"Error triggering analysis for interview {interview_id}")
-        raise HTTPException(status_code=500, detail=str(e))
+        events = json.loads(analysis.event_percentages or "[]")
+    except Exception:
+        events = []
 
-
+    return {
+        "status": analysis.status,
+        "risk_level": analysis.risk_level,
+        "event_percentages": events,
+        "analysis_report": analysis.analysis_report,
+        "events": [
+            {
+                "label": e.get("event_name"),
+                "timestamp": round(e.get("percentage_in_video", 0), 2)
+            }
+            for e in events
+        ]
+    }
 @router.get("/{interview_id}/analysis", response_model=AnalysisOut)
 def get_analysis(
     interview_id: int,
     db: Session = Depends(get_db)
 ):
     """
-    Fetch analysis results for an interview.
+    Fetch analysis results from database.
     
-    Returns analysis record with status and results.
+    Returns analysis record with status, risk level, and event percentages.
     """
+    analysis = db.query(InterviewAnalysis).filter(
+        InterviewAnalysis.interview_id == interview_id
+    ).first()
+
+    if not analysis:
+        return None
+
     try:
-        # Check interview exists
-        interview = db.query(InterviewModel).filter(
-            InterviewModel.id == interview_id
-        ).first()
-        if not interview:
-            raise HTTPException(status_code=404, detail='Interview not found')
-        
-        # Get analysis record
-        analysis = db.query(InterviewAnalysis).filter(
-            InterviewAnalysis.interview_id == interview_id
-        ).first()
-        
-        if not analysis:
-            raise HTTPException(
-                status_code=404,
-                detail='No analysis found for this interview. Trigger analysis using /interviews/{id}/analyze'
-            )
-        
-        return analysis
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"Error fetching analysis for interview {interview_id}")
-        raise HTTPException(status_code=500, detail=str(e))
+        event_data = json.loads(analysis.event_percentages or "[]")
+    except Exception:
+        event_data = []
+
+    return {
+        "status": analysis.status,
+        "risk_level": analysis.risk_level,
+        "event_percentages": event_data,
+        "analysis_report": analysis.analysis_report,
+        "events": [
+            {
+                "label": e.get("event_name"),
+                "timestamp": round(e.get("percentage_in_video", 0), 2)
+            }
+            for e in event_data
+        ]
+    }
 
 
 @router.post("/{interview_id}/complete-with-analysis")
@@ -667,42 +648,6 @@ def list_recordings(interview_id: int, db: Session = Depends(get_db)):
     return results
 
 
-@router.post("/{interview_id}/analyze")
-def analyze_interview(interview_id: int, db: Session = Depends(get_db)):
-    # find most recent recording
-    rec = db.query(Recording).filter(Recording.interview_id == interview_id).order_by(Recording.created_at.desc()).first()
-    if not rec:
-        raise HTTPException(status_code=404, detail='No recordings found for this interview')
-
-    # Run advanced ML analyzer on the recording
-    try:
-        analysis = run_ml_analysis(rec.file_path, interview_id, rec.id)
-    except Exception as e:
-        logger.exception("Analysis failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
-
-    # save analysis to uploads as JSON
-    import json
-    upload_dir = _uploads_dir()
-    analysis_file = os.path.join(upload_dir, f"analysis_{interview_id}.json")
-    with open(analysis_file, 'w', encoding='utf-8') as f:
-        json.dump(analysis, f)
-
-    return analysis
-
-
-@router.get("/{interview_id}/analysis")
-def get_analysis(interview_id: int):
-    upload_dir = _uploads_dir()
-    analysis_file = os.path.join(upload_dir, f"analysis_{interview_id}.json")
-    if not os.path.exists(analysis_file):
-        raise HTTPException(status_code=404, detail='No analysis found')
-    import json
-    with open(analysis_file, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    return data
-
-
 @router.post("/{interview_id}/record_camera")
 def record_camera(interview_id: int, duration_seconds: int = Form(10), filename: str | None = Form(None), question_id: int | None = Form(None), answer: str | None = Form(None), background_tasks: BackgroundTasks = None):
     """Start a camera-only recording on the server for a given duration (seconds).
@@ -728,7 +673,7 @@ def record_camera(interview_id: int, duration_seconds: int = Form(10), filename:
 
 @router.delete("/{interview_id}")
 def delete_interview(interview_id: int, db: Session = Depends(get_db)):
-    # delete recordings (and files) + questions + interview
+    # delete recordings (and files) + questions + analysis + logs + interview
     item = db.query(InterviewModel).filter(InterviewModel.id == interview_id).first()
     if not item:
         raise HTTPException(status_code=404, detail='Interview not found')
@@ -742,10 +687,14 @@ def delete_interview(interview_id: int, db: Session = Depends(get_db)):
         except Exception:
             pass
 
-    # remove DB rows
+    # remove DB rows (delete in correct order to handle foreign keys)
     try:
+        # Delete dependent records first
+        db.query(CandidateLog).filter(CandidateLog.interview_id == interview_id).delete(synchronize_session=False)
+        db.query(InterviewAnalysis).filter(InterviewAnalysis.interview_id == interview_id).delete(synchronize_session=False)
         db.query(Recording).filter(Recording.interview_id == interview_id).delete(synchronize_session=False)
         db.query(QuestionModel).filter(QuestionModel.interview_id == interview_id).delete(synchronize_session=False)
+        # Finally delete the interview itself
         db.delete(item)
         db.commit()
     except Exception as e:

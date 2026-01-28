@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom' // Added useNavigate for disconnect
 import api from '../services/api'
 
 export default function InterviewDetails(){
   const { id } = useParams()
+  const navigate = useNavigate() // For redirecting on disconnect
   const [interview, setInterview] = useState(null)
   const [loading, setLoading] = useState(true)
   const [recordings, setRecordings] = useState([])
@@ -13,8 +14,14 @@ export default function InterviewDetails(){
   const [videoUrl, setVideoUrl] = useState(null)
   const videoRef = useRef(null)
 
+  // --- NEW STATE FOR QUESTION SKIPPING ---
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
+  const [unansweredTime, setUnansweredTime] = useState(0)
+  const SKIP_THRESHOLD = 5 // 5 seconds threshold
+
   useEffect(() => {
     setLoading(true)
+
     api.get(`/interviews/${id}`)
       .then(res => setInterview(res.data))
       .catch(() => setInterview(null))
@@ -23,9 +30,8 @@ export default function InterviewDetails(){
     api.get(`/interviews/${id}/recordings`).then(res => {
       const recs = res.data || []
       setRecordings(recs)
-      // Use the most recent recording as the video
       if (recs.length > 0) {
-        const latestRecording = recs[0] // assuming sorted by created_at desc
+        const latestRecording = recs[0]
         setVideoUrl(`http://localhost:8000${latestRecording.file_url}`)
       } else {
         setVideoUrl(null)
@@ -37,11 +43,49 @@ export default function InterviewDetails(){
     api.get(`/interviews/${id}/analysis`).then(res => { setAnalysis(res.data || null); setStatusBadge('Analyzed') }).catch(() => { setAnalysis(null); setStatusBadge('Pending') })
   }, [id])
 
+  // --- NEW LOGIC: TIMER FOR SKIPPING QUESTIONS ---
+  useEffect(() => {
+    let timer;
+    // Only run if we have an interview and questions to process
+    if (interview && interview.questions && interview.questions.length > 0) {
+      timer = setInterval(() => {
+        setUnansweredTime(prev => {
+          if (prev + 1 >= SKIP_THRESHOLD) {
+            handleQuestionTimeout();
+            return 0; // Reset timer after skip/disconnect
+          }
+          return prev + 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [interview, currentQuestionIndex]);
+
+  const handleQuestionTimeout = () => {
+    if (interview?.questions && currentQuestionIndex < interview.questions.length - 1) {
+      // Logic to skip to next question
+      console.log("Question unanswered, skipping...");
+      setCurrentQuestionIndex(prev => prev + 1);
+      setUnansweredTime(0);
+    } else {
+      // No more questions, disconnect
+      console.log("No more questions or threshold reached. Disconnecting...");
+      handleDisconnect();
+    }
+  };
+
+  const handleDisconnect = () => {
+    // Navigates away to simulate disconnection
+    alert("Session disconnected due to inactivity threshold.");
+    navigate('/interviews'); 
+  };
+  // ---------------------------------------------
+
   const runAnalysis = async () => {
     try{
       setIsAnalyzing(true)
       setStatusBadge('Analyzing...')
-      await api.post(`/interviews/${id}/analyze`)
+      await api.post(`/interviews/analyze`, { 'interview_id': id }) // Updated endpoint
       const res = await api.get(`/interviews/${id}/analysis`)
       setAnalysis(res.data)
       setStatusBadge('Analyzed')
@@ -80,6 +124,13 @@ export default function InterviewDetails(){
               <div>
                 <h1 className="text-4xl font-bold text-black dark:text-white mb-2">{interview.title}</h1>
                 <p className="text-slate-600 dark:text-slate-400 text-lg">📅 {interview.scheduled_at ? new Date(interview.scheduled_at).toLocaleString() : 'No date'}</p>
+                
+                {/* Visual feedback for the skip timer */}
+                {interview.questions && (
+                   <p className="mt-2 text-sm text-amber-600 font-medium">
+                     Question {currentQuestionIndex + 1} of {interview.questions.length} | Auto-skip in: {SKIP_THRESHOLD - unansweredTime}s
+                   </p>
+                )}
               </div>
               <div className="flex flex-col items-end gap-2">
                 <span className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap ${
@@ -144,10 +195,10 @@ export default function InterviewDetails(){
                   <div className="p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
                     <h4 className="font-semibold text-slate-900 dark:text-blue-300 mb-2">Gaze Distribution</h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                      {Object.entries(analysis.event_percentages).map(([key, value]) => (
-                        <div key={key} className="text-center">
-                          <p className="font-medium">{key}</p>
-                          <p>{typeof value === 'number' ? value.toFixed(1) : value}%</p>
+                      {analysis.event_percentages.map((item) => (
+                        <div key={item.event_name} className="text-center">
+                          <p className="font-medium">{item.event_name}</p>
+                          <p>{item.percentage_in_video}%</p>
                         </div>
                       ))}
                     </div>
