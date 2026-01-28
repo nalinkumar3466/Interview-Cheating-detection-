@@ -48,9 +48,9 @@
 .status-pill.idle{background:#e6eefb;color:#2b3a67}
 
 .decibel-indicator{display:flex;align-items:center;gap:12px;margin-top:10px}
-.decibel-bar{background:#eef1f6;border-radius:8px;flex:1;height:10px;overflow:hidden}
-.decibel-level{height:100%;background:linear-gradient(90deg,#5b6cff,#2fb6ff);border-radius:8px}
-.decibel-value{font-size:13px;color:var(--muted)}
+.decibel-bar{background:#eef1f6;border-radius:8px;flex:1;height:10px;overflow:hidden;min-width:160px}
+.decibel-level{height:100%;background:linear-gradient(90deg,#3b82f6,#2563eb);border-radius:8px;transition:width 0.1s ease-out;width:0}
+.decibel-value{font-size:13px;color:var(--muted);white-space:nowrap;min-width:80px}
 
 .answer-block{background:transparent}
 .answer-label{font-weight:600;margin-bottom:6px}
