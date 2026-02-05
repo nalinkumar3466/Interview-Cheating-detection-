@@ -1,2 +1,6 @@
-$env:DATABASE_URL="postgresql+psycopg://berribotuser:berribot@localhost:5432/berribot"
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+$env:PYTHONPATH="N:\BERRIBOT\Interview-Cheating-detection\backend"
+$env:DATABASE_URL = 'postgresql+psycopg://berribotuser:berribot@localhost:5432/berribot'
+$env:OPENAI_API_KEY = "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"
 uvicorn app.main:app --reload

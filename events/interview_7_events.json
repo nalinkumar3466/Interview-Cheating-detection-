@@ -1,0 +1,92 @@
+[
+    {
+        "event": "WARMUP Gaze",
+        "start": 0.0,
+        "end": 0.3,
+        "details": "Duration 0.30 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 0.3,
+        "end": 5.64,
+        "details": "Duration 5.34 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 5.64,
+        "end": 5.88,
+        "details": "Duration 0.24 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 5.88,
+        "end": 16.14,
+        "details": "Duration 10.26 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 16.14,
+        "end": 17.58,
+        "details": "Duration 1.44 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 17.58,
+        "end": 18.72,
+        "details": "Duration 1.14 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 18.72,
+        "end": 20.76,
+        "details": "Duration 2.04 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 20.76,
+        "end": 23.34,
+        "details": "Duration 2.58 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 23.34,
+        "end": 25.38,
+        "details": "Duration 2.04 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 25.38,
+        "end": 26.1,
+        "details": "Duration 0.72 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 26.1,
+        "end": 27.72,
+        "details": "Duration 1.62 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 27.72,
+        "end": 28.14,
+        "details": "Duration 0.42 sec"
+    },
+    {
+        "event": "Frequent Distraction",
+        "start": 25.38,
+        "end": 28.14,
+        "details": "3 rapid gaze switches (<2.0s)"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 28.14,
+        "end": 28.62,
+        "details": "Duration 0.48 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 28.62,
+        "end": 29.1,
+        "details": "Duration 0.48 sec"
+    }
+]

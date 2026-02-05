@@ -1,0 +1,26 @@
+[
+    {
+        "event": "WARMUP Gaze",
+        "start": 0.0,
+        "end": 0.3,
+        "details": "Duration 0.30 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 0.3,
+        "end": 5.46,
+        "details": "Duration 5.16 sec"
+    },
+    {
+        "event": "UP Gaze",
+        "start": 5.46,
+        "end": 5.7,
+        "details": "Duration 0.24 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 5.7,
+        "end": 6.24,
+        "details": "Duration 0.54 sec"
+    }
+]

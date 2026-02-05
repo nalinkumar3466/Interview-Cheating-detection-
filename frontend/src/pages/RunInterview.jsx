@@ -19,23 +19,32 @@ export default function RunInterview({ candidateMode = false, candidateToken = n
   const [recording, setRecording] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // --- REFS (I added the missing calibration refs here to stop the crash) ---
+  // --- Live-state refs (avoid stale closures inside setInterval/VAD callbacks) ---
+  const questionsRef = useRef([]);
+  const indexRef = useRef(0);
+  const answerRef = useRef("");
+  const recordingRef = useRef(false);
+  const ttsPlayingRef = useRef(false);
+  const submitInProgressRef = useRef(false);
+
+  // --- REFS ---
   const localPreviewRef = useRef(null);
   const previewStreamRef = useRef(null);
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
   const dataArrayRef = useRef(null);
   const vadIntervalRef = useRef(null);
-  const lastSpokenRef = useRef(Date.now());
-  const speechTriggeredRef = useRef(false);
-  const speechStartTimeRef = useRef(null);
-  const questionStartTimeRef = useRef(Date.now());
   const recorderRef = useRef(null);
   const segmentStartRef = useRef(null);
 
-  // These were missing and causing your ReferenceError
+  // VAD & Skip Detection Refs
+  const skipTriggeredRef = useRef(false);
+  const idleStateRef = useRef({ type: null, startTime: null });
+  // Detect “flatline” input: db stays ~same for 5s continuously
+  const stableDbStateRef = useRef({ startTime: null, lastDb: null, lastLoggedSecond: -1 });
   const rmsCalibrationDone = useRef(false);
   const rmsSilenceSamplesRef = useRef([]);
+  const currentDbRef = useRef(-90);
 
   useEffect(() => {
     let mounted = true;
@@ -60,6 +69,12 @@ export default function RunInterview({ candidateMode = false, candidateToken = n
       }
     };
   }, [id]);
+
+  // Keep refs in sync with state
+  useEffect(() => { questionsRef.current = questions; }, [questions]);
+  useEffect(() => { indexRef.current = index; }, [index]);
+  useEffect(() => { answerRef.current = answer; }, [answer]);
+  useEffect(() => { recordingRef.current = recording; }, [recording]);
 
   useEffect(() => {
     if (!candidateMode || !autoStart) return;
@@ -119,75 +134,112 @@ export default function RunInterview({ candidateMode = false, candidateToken = n
       const dataArray = new Float32Array(analyser.fftSize);
       dataArrayRef.current = dataArray;
 
-      // Reset Calibration State
+      // Reset Calibration & Skip State
       rmsCalibrationDone.current = false;
       rmsSilenceSamplesRef.current = [];
-      speechStartTimeRef.current = null;
-      speechTriggeredRef.current = false;
+      skipTriggeredRef.current = false;
+      idleStateRef.current = { type: null, startTime: null };
+      stableDbStateRef.current = { startTime: null, lastDb: null, lastLoggedSecond: -1 };
       const startCalTime = Date.now();
       let thresholdDb = -45;
+      let baselineDb = null;
+      let calibrationDone = false;
+      let silenceStart = null;
 
       vadIntervalRef.current = setInterval(() => {
-  try {
-    if (ttsPlaying) {
-      console.log("📢 TTS still playing, skipping VAD check");
-      speechStartTimeRef.current = null;
-      speechTriggeredRef.current = false;
-      return;
-    }
-
+        try {
     analyser.getFloatTimeDomainData(dataArray);
 
     let sum = 0;
-    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
+    for (let i = 0; i < dataArray.length; i++) {
+      sum += dataArray[i] * dataArray[i];
+    }
+
     const rms = Math.sqrt(sum / dataArray.length) || 1e-12;
     const db = 20 * Math.log10(rms);
 
+    currentDbRef.current = db;
+
+    window.dispatchEvent(
+      new CustomEvent("vad-db", { detail: { db } })
+    );
+
     const now = Date.now();
 
-    // Calibration Logic
-    if (!rmsCalibrationDone.current) {
-      if (now - startCalTime < 1500) {
-        rmsSilenceSamplesRef.current.push(db);
-        return;
-      } else {
-        const avg = rmsSilenceSamplesRef.current.reduce((a, b) => a + b, 0) / rmsSilenceSamplesRef.current.length;
-        thresholdDb = Math.min(avg + 10, -42);
-        rmsCalibrationDone.current = true;
-        console.log("✅ VAD Calibrated. Threshold:", thresholdDb);
-      }
+    /* ----------------------------------
+       STEP 1: WAIT UNTIL TTS FINISHES
+    -----------------------------------*/
+    if (ttsPlayingRef.current) {
+      calibrationDone = false;
+      baselineDb = null;
+      silenceStart = null;
+      return;
     }
 
-    window.dispatchEvent(new CustomEvent("vad-db", { detail: { db } }));
-
-    // ---- SPEECH BASED AUTO SKIP (AFTER 5 SECONDS OF SPEECH ABOVE THRESHOLD) ----
-
-    if (db > thresholdDb) {
-      // speech detected above threshold
-      if (speechStartTimeRef.current === null) {
-        speechStartTimeRef.current = now;
-        console.log("🎤 Speech started above threshold");
+    /* ----------------------------------
+       STEP 2: CALIBRATE ROOM (2s)
+    -----------------------------------*/
+    if (!calibrationDone) {
+      if (!baselineDb) {
+        baselineDb = {
+          sum: 0,
+          count: 0,
+          start: now,
+        };
       }
 
-      const speechDuration = now - speechStartTimeRef.current;
-      console.log("⏱️ Speech above threshold:", speechDuration, "ms");
+      baselineDb.sum += db;
+      baselineDb.count++;
 
-      if (!speechTriggeredRef.current && speechDuration >= 5000) {
-        speechTriggeredRef.current = true;
-        console.warn("⚡ Speech 5s above threshold -> auto skip - Calling handleSubmitAndNext()");
+      if (now - baselineDb.start < 2000) {
+        return; // still calibrating
+      }
+
+      const avg = baselineDb.sum / baselineDb.count;
+
+      // Lock silence threshold
+      baselineDb.value = avg + 6; // margin
+      calibrationDone = true;
+
+      console.log("✅ Room calibrated:", baselineDb.value.toFixed(1));
+
+      return;
+    }
+
+    /* ----------------------------------
+       STEP 3: SILENCE DETECTION
+    -----------------------------------*/
+
+    const SILENCE_THRESHOLD = baselineDb.value;
+    const SPEECH_THRESHOLD = SILENCE_THRESHOLD + 8;
+
+    const isSilent = db <= SILENCE_THRESHOLD;
+    const isSpeech = db >= SPEECH_THRESHOLD;
+
+    if (isSilent) {
+      if (!silenceStart) {
+        silenceStart = now;
+        console.log("🔇 Silence started");
+      }
+
+      const duration = now - silenceStart;
+
+      if (duration >= 5000 && !skipTriggeredRef.current) {
+        skipTriggeredRef.current = true;
+
+        console.warn("⚡ 5s silence → AUTO SKIP");
+
         handleSubmitAndNext();
       }
-    } else {
-      // below threshold (silence or low speech)
-      speechStartTimeRef.current = null;
-      speechTriggeredRef.current = false;
+
+    } else if (isSpeech) {
+      silenceStart = null;
     }
 
-  } catch (err) {
-    console.error("VAD sample err", err);
+  } catch (e) {
+    console.error("VAD error:", e);
   }
-}, 100);
-
+}, 120);
       startContinuousRecorder(webcam);
       setRecording(true);
       setStatus("Recording");
@@ -226,46 +278,73 @@ export default function RunInterview({ candidateMode = false, candidateToken = n
   }
 
   function handleSubmitAndNext() {
-    if (!questions.length) return;
+    // Prevent multiple concurrent submissions/skips
+    if (submitInProgressRef.current) {
+      console.log("⏳ Submission already in progress, ignoring duplicate skip/submit");
+      return;
+    }
+    submitInProgressRef.current = true;
 
-    console.log(`📤 Submitting answer for question ${index + 1}/${questions.length}`);
+    const qs = questionsRef.current || [];
+    const idx = indexRef.current || 0;
+    const ans = answerRef.current || "";
+
+    if (!qs.length) {
+      submitInProgressRef.current = false;
+      return;
+    }
+
+    console.log(`📤 Submitting answer for question ${idx + 1}/${qs.length}`);
 
     const path = candidateMode ? `/candidate/interviews/${id}/answer` : `/interviews/${id}/answer`;
     const headers = candidateMode ? { 'X-Candidate-Token': candidateToken } : {};
-    const q = questions[index];
+    const q = qs[idx];
 
     // Submit current answer immediately
     if (q) {
-      api.post(path, new URLSearchParams({ question_id: q.id, answer }), { headers }).catch(() => {});
+      const form = new FormData();
+      form.append("question_id", q.id);
+      form.append("answer", ans);
+      api.post(path, form, { headers })
+        .catch((err) => {
+          console.error("Answer submission failed:", err?.response?.status, err?.message);
+        });
     }
 
     // Clear answer state
     setAnswer("");
 
-    // Reset speech tracking refs
-    speechStartTimeRef.current = null;
-    speechTriggeredRef.current = false;
+    // NOTE: we do NOT reset skipTriggeredRef here because it can allow re-trigger
+    // before the UI advances to the next question.
 
     // Check if this is the last question
-    if (index >= questions.length - 1) {
+    if (idx >= qs.length - 1) {
       // Last question - finish interview
       console.log("🏁 Last question complete - finishing interview");
       stopRecording();
       const finishPath = candidateMode
         ? `/candidate/interviews/${id}/finish`
         : `/interviews/${id}/finish`;
-      api.post(finishPath, null, { headers }).catch(() => {});
+      api.post(finishPath, null, { headers })
+        .catch((err) => {
+          console.error("Finish failed:", err?.response?.status, err?.message);
+        });
       setStatus("Complete");
       setTimeout(() => navigate("/"), 1000);
     } else {
       // Advance to next question immediately
-      const nextIndex = index + 1;
-      console.log(`✅ ADVANCING: Question ${index + 1} → Question ${nextIndex + 1}`);
+      const nextIndex = idx + 1;
+      console.log(`✅ ADVANCING: Question ${idx + 1} → Question ${nextIndex + 1}`);
       setIndex(nextIndex);
     }
+
+    // release submission lock shortly after state updates
+    setTimeout(() => {
+      submitInProgressRef.current = false;
+    }, 250);
   }
 
-  const [dbValue, setDbValue] = useState(-100);
+  const [dbValue, setDbValue] = useState(-90);
   const [ttsPlaying, setTtsPlaying] = useState(false);
   const synthRef = useRef(window.speechSynthesis || null);
   const location = useLocation();
@@ -273,16 +352,31 @@ export default function RunInterview({ candidateMode = false, candidateToken = n
   const [preStartActive, setPreStartActive] = useState(urlParams.get('start') === 'true' || urlParams.get('start') === '1');
   const [preStartSeconds, setPreStartSeconds] = useState(preStartActive ? 10 : 0);
 
-  useEffect(() => {
-  speechStartTimeRef.current = null;
-  speechTriggeredRef.current = false;
-}, [index]);
+  // Convert dBFS to UI scale (0-100)
+  // -90 dBFS → 0, -5 dBFS → 100
+  function convertDbfsToUiScale(db) {
+    const MIN_DB = -90;
+    const MAX_DB = -5;
+    if (db <= MIN_DB) return 0;
+    if (db >= MAX_DB) return 100;
+    return ((db - MIN_DB) / (MAX_DB - MIN_DB)) * 100;
+  }
 
   useEffect(() => {
     const onDb = (e) => setDbValue(e.detail.db);
     window.addEventListener("vad-db", onDb);
     return () => window.removeEventListener("vad-db", onDb);
   }, []);
+
+  useEffect(() => { ttsPlayingRef.current = ttsPlaying; }, [ttsPlaying]);
+
+  // When question advances, reset skip-related state so next question can be auto-skipped again
+  useEffect(() => {
+    skipTriggeredRef.current = false;
+    idleStateRef.current = { type: null, startTime: null };
+    stableDbStateRef.current = { startTime: null, lastDb: null, lastLoggedSecond: -1 };
+    submitInProgressRef.current = false;
+  }, [index]);
 
   useEffect(() => {
     if (questions[index] && recording) speakQuestion(questions[index].text);
@@ -349,8 +443,8 @@ export default function RunInterview({ candidateMode = false, candidateToken = n
           <div className="live-card">
             <div className="live-frame"><video ref={localPreviewRef} className="camera-frame" muted playsInline /></div>
             <div className="decibel-indicator">
-              <div className="decibel-bar"><div className="decibel-level" style={{ width: `${Math.min(100, Math.max(0, ((dbValue + 120) / 120) * 100))}%` }} /></div>
-              <div className="decibel-value">{dbValue.toFixed(1)} dBFS</div>
+              <div className="decibel-bar"><div className="decibel-level" style={{ width: `${convertDbfsToUiScale(dbValue)}%` }} /></div>
+              <div className="decibel-value">Level: {convertDbfsToUiScale(dbValue).toFixed(0)}</div>
             </div>
           </div>
           <div className="controls-row">
