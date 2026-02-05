@@ -277,10 +277,6 @@ def _run_ml_pipeline(interview_id: int, video_path: str):
             .order_by(InterviewAnalysis.created_at.desc())\
             .first()
 
-        if analysis:
-            analysis.status = "completed"
-            db_session.commit()
-
         logger.info(f"ML completed for interview {interview_id}")
 
     except subprocess.CalledProcessError as e:
@@ -288,6 +284,7 @@ def _run_ml_pipeline(interview_id: int, video_path: str):
 
         analysis = db_session.query(InterviewAnalysis)\
             .filter(InterviewAnalysis.interview_id == interview_id)\
+            .order_by(InterviewAnalysis.created_at.desc())\
             .first()
 
         if analysis:
@@ -331,8 +328,9 @@ def trigger_analysis(
 
     # Get recording
     recording = db.query(Recording)\
-        .filter(Recording.interview_id == payload.interview_id)\
-        .first()
+    .filter(Recording.interview_id == payload.interview_id)\
+    .order_by(Recording.created_at.desc())\
+    .first()
 
     if not recording:
         raise HTTPException(400, "No recordings found")
@@ -344,8 +342,10 @@ def trigger_analysis(
 
     # Get/create analysis row
     analysis = db.query(InterviewAnalysis)\
-        .filter(InterviewAnalysis.interview_id == payload.interview_id)\
-        .first()
+    .filter(InterviewAnalysis.interview_id == payload.interview_id)\
+    .order_by(InterviewAnalysis.created_at.desc())\
+    .first()
+
 
     if not analysis:
         analysis = InterviewAnalysis(
@@ -372,8 +372,8 @@ def trigger_analysis(
         events = json.loads(analysis.event_percentages or "[]")
     except Exception:
         events = []
-
-    return {
+    print("Status:", analysis.status)
+    result_obj = {
         "status": analysis.status,
         "risk_level": analysis.risk_level,
         "event_percentages": events,
@@ -386,6 +386,9 @@ def trigger_analysis(
             for e in events
         ]
     }
+    print("Result:", result_obj)
+    return result_obj
+    
 @router.get("/{interview_id}/analysis", response_model=AnalysisOut)
 def get_analysis(
     interview_id: int,
@@ -542,7 +545,12 @@ def candidate_answer(interview_id: int, question_id: int | None = Form(None), an
     ok, interview = _validate_token(db, x_candidate_token, interview_id)
     if not ok:
         raise HTTPException(status_code=403, detail='Invalid candidate token')
-    rec = Recording(interview_id=interview_id, question_id=question_id, answer_text=answer)
+    
+    # Use safe default file_path to avoid NOT NULL constraint violation
+    # This endpoint is for text answers without a file upload (e.g., auto-skip)
+    file_path = f"text-answer-{interview_id}-{question_id}-{int(time.time())}"
+    
+    rec = Recording(interview_id=interview_id, question_id=question_id, file_path=file_path, answer_text=answer)
     db.add(rec)
     db.commit()
     db.refresh(rec)
@@ -570,6 +578,47 @@ def candidate_complete(interview_id: int, file: UploadFile = File(...), answer: 
         background_tasks.add_task(run_analysis_background, interview_id)
 
     return {'status': 'ok', 'recording_id': rec.id, 'file_path': save_path}
+
+@router.post("/{interview_id}/answer")
+def submit_answer(
+    interview_id: int,
+    question_id: int = Form(...),
+    answer: str = Form(""),
+    db: Session = Depends(get_db)
+):
+    # Use safe default file_path to avoid NOT NULL constraint violation
+    # This endpoint is for text answers without a file upload (e.g., auto-skip)
+    file_path = f"text-answer-{interview_id}-{question_id}-{int(time.time())}"
+    
+    rec = Recording(
+        interview_id=interview_id,
+        question_id=question_id,
+        file_path="auto-skip",
+        answer_text=answer
+    )
+
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+
+    return {"status": "ok", "recording_id": rec.id}
+
+@router.post("/{interview_id}/finish")
+def finish_interview(
+    interview_id: int,
+    db: Session = Depends(get_db)
+):
+    interview = db.query(InterviewModel)\
+        .filter(InterviewModel.id == interview_id)\
+        .first()
+
+    if not interview:
+        raise HTTPException(404, "Interview not found")
+
+    interview.status = "completed"
+    db.commit()
+
+    return {"status": "finished"}
 
 
 @router.post('/candidate/log')
@@ -664,9 +713,12 @@ def record_camera(interview_id: int, duration_seconds: int = Form(10), filename:
     if background_tasks is not None:
         background_tasks.add_task(_record_camera_task, interview_id, duration_seconds, save_path, question_id, answer)
     else:
-        # fallback: run in a thread (non-blocking)
-        t = threading.Thread(target=_record_camera_task, args=(interview_id, duration_seconds, save_path, question_id, answer), daemon=True)
-        t.start()
+       threading.Thread(
+        target=_record_camera_task,
+        args=(interview_id, duration_seconds, save_path, question_id, answer),
+        daemon=True
+    ).start()
+   
 
     return {"status": "recording_started", "file_path": save_path, "message": "Recording started in background on the server camera."}
 

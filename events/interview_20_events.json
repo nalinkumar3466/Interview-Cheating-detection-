@@ -1,15 +1,15 @@
 [
     {
-        "event": "RIGHT Gaze",
+        "event": "WARMUP Gaze",
         "start": 0.0,
-        "end": 0.12,
-        "details": "Duration 0.12 sec"
+        "end": 0.3,
+        "details": "Duration 0.30 sec"
     },
     {
         "event": "UP Gaze",
-        "start": 0.12,
+        "start": 0.3,
         "end": 3.66,
-        "details": "Duration 3.54 sec"
+        "details": "Duration 3.36 sec"
     },
     {
         "event": "RIGHT Gaze",
@@ -46,5 +46,11 @@
         "start": 8.16,
         "end": 8.46,
         "details": "Duration 0.30 sec"
+    },
+    {
+        "event": "UP Gaze",
+        "start": 8.46,
+        "end": 8.94,
+        "details": "Duration 0.48 sec"
     }
 ]

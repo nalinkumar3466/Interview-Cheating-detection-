@@ -81,22 +81,34 @@ export default function InterviewDetails(){
   };
   // ---------------------------------------------
 
-  const runAnalysis = async () => {
-    try{
-      setIsAnalyzing(true)
-      setStatusBadge('Analyzing...')
-      await api.post(`/interviews/analyze`, { 'interview_id': id }) // Updated endpoint
-      const res = await api.get(`/interviews/${id}/analysis`)
-      setAnalysis(res.data)
-      setStatusBadge('Analyzed')
-    }catch(e){
-      console.error(e)
-      setStatusBadge('Error')
-      alert('Analysis failed')
-    }finally{
-      setIsAnalyzing(false)
-    }
+  const runAnalysis = async () => { 
+  try {
+    setIsAnalyzing(true)
+    setStatusBadge('Analyzing...')
+
+    await api.post(
+      `/interviews/analyze`,
+      { interview_id: id },
+      { timeout: 10000 } // 👈 10 seconds
+    )
+
+    const res = await api.get(
+      `/interviews/${id}/analysis`,
+      { timeout: 10000 } // 👈 10 seconds
+    )
+
+    setAnalysis(res.data)
+    setStatusBadge('Analyzed')
+
+  } catch (e) {
+    console.error(e)
+    setStatusBadge('Error')
+    alert('Analysis failed')
+
+  } finally {
+    setIsAnalyzing(false)
   }
+}
 
   const jumpTo = (seconds) => {
     if(videoRef.current){
