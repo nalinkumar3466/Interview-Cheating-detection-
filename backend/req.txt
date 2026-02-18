@@ -1,9 +1,0 @@
-fastapi
-uvicorn
-sqlalchemy
-psycopg[binary]
-python-dotenv
-python-multipart
-pydantic[email]
-email-validator
-mediapipe==0.10.21
