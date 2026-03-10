@@ -9,8 +9,14 @@
   --shadow: 0 8px 24px rgba(35,40,80,0.06);
 }
 
+
+
+
 .runner-root{padding:24px; background:var(--bg); min-height:100vh}
-.runner-inner{max-width:1100px;margin:0 auto}
+.runner-inner{width: 100%;
+  max-width: 100%;
+  margin: 0;
+}
 .row-layout{display:flex;gap:20px;align-items:flex-start}
 
 /* Question palette */
@@ -68,4 +74,22 @@
 @media (max-width:900px){
   .row-layout{flex-direction:column}
   .question-palette{flex:unset;width:100%}
+
+
+  .sketch-layout-active { max-width: 100%; margin: 0;width: 100%;}
+  .sketch-camera-below {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+}
+.sketch-camera-wrapper {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.sketch-camera-wrapper .camera-frame {
+  width: 360px;
+  height: 320px;
+}
 }

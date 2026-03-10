@@ -2,10 +2,18 @@ from sqlalchemy import Column, Integer, String, DateTime, Text
 from sqlalchemy.sql import func
 from app.core.database import Base
 from datetime import datetime
+from sqlalchemy.orm import relationship
+
 
 
 class Interview(Base):
     __tablename__ = 'interviews'
+    canvas_responses = relationship(
+    "CanvasResponse",
+    backref="interview",
+    cascade="all, delete-orphan"
+)
+
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     candidate_name = Column(String, nullable=False)

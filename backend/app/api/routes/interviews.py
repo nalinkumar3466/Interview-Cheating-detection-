@@ -6,12 +6,15 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db, engine, Base, SessionLocal
 import time
 import threading
+import base64
 from app.models.interview import Interview as InterviewModel
 from app.schemas import InterviewCreate, Interview, InterviewOut, Question, QuestionPayload
 from app.models.recording import Recording
 from app.models.question import Question as QuestionModel
 from app.models.analysis import InterviewAnalysis
 from app.schemas_analysis import AnalysisOut
+# canvas responses are stored separately when sketches are submitted
+from app.models.canvas_response import CanvasResponse as CanvasResponseModel
 import os
 from sqlalchemy import insert
 import uuid
@@ -389,7 +392,7 @@ def trigger_analysis(
     print("Result:", result_obj)
     return result_obj
     
-@router.get("/{interview_id}/analysis", response_model=AnalysisOut)
+@router.get("/{interview_id}/analysis")
 def get_analysis(
     interview_id: int,
     db: Session = Depends(get_db)
@@ -398,6 +401,7 @@ def get_analysis(
     Fetch analysis results from database.
     
     Returns analysis record with status, risk level, and event percentages.
+    Returns None if no analysis exists (frontend handles gracefully).
     """
     analysis = db.query(InterviewAnalysis).filter(
         InterviewAnalysis.interview_id == interview_id
@@ -556,6 +560,77 @@ def candidate_answer(interview_id: int, question_id: int | None = Form(None), an
     db.refresh(rec)
     return {'status': 'ok', 'recording_id': rec.id}
 
+@router.post("/{interview_id}/sketch")
+def submit_sketch(
+    interview_id: int,
+    question_id: int = Form(...),
+    strokes: str = Form(...),
+    image: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    try:
+        strokes_data = json.loads(strokes)
+
+        # Compute metadata
+        stroke_count = len(strokes_data)
+
+        first_time = strokes_data[0]["startedAt"]
+        last_time = max(
+            p["t"]
+            for s in strokes_data
+            for p in s["points"]
+        )
+
+        duration_ms = last_time - first_time
+
+        # Save image file
+        upload_dir = _uploads_dir()
+          
+        filename = f"sketch_{interview_id}_{question_id}_{int(time.time()*1000)}_{uuid4().hex[:8]}.png"
+        save_path = os.path.join(upload_dir, filename)
+
+
+        # image comes as base64 dataURL
+        header, encoded = image.split(",", 1)
+        with open(save_path, "wb") as f:
+            f.write(base64.b64decode(encoded))
+
+        # Save in Recording table (reuse existing)
+        rec = Recording(
+            interview_id=interview_id,
+            question_id=question_id,
+            file_path=save_path,
+            answer_text="canvas-sketch"
+        )
+        db.add(rec)
+        db.commit()
+        db.refresh(rec)
+
+        # also persist as a proper canvas_response so it shows up
+        try:
+            canvas_resp = CanvasResponseModel(
+                interview_id=interview_id,
+                question_id=question_id,
+                strokes_json=strokes_data,
+                final_image_base64=image,
+                duration_ms=duration_ms,
+                stroke_count=stroke_count,
+            )
+            db.add(canvas_resp)
+            db.commit()
+            db.refresh(canvas_resp)
+        except Exception as canvas_err:
+            logger.exception("failed to create canvas_response from sketch: %s", canvas_err)
+
+        return {
+            "status": "ok",
+            "recording_id": rec.id,
+            "stroke_count": stroke_count,
+            "duration_ms": duration_ms
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post('/candidate/interviews/{interview_id}/complete')
 def candidate_complete(interview_id: int, file: UploadFile = File(...), answer: str = Form(None), question_id: int | None = Form(None), x_candidate_token: str | None = Header(None), db: Session = Depends(get_db), background_tasks: BackgroundTasks = None):
@@ -741,7 +816,12 @@ def delete_interview(interview_id: int, db: Session = Depends(get_db)):
 
     # remove DB rows (delete in correct order to handle foreign keys)
     try:
-        # Delete dependent records first
+        # Delete dependent records first - ADD THIS LINE
+        db.query(CanvasResponseModel).filter(
+            CanvasResponseModel.interview_id == interview_id
+        ).delete(synchronize_session=False)
+        
+        # Delete other dependent records
         db.query(CandidateLog).filter(CandidateLog.interview_id == interview_id).delete(synchronize_session=False)
         db.query(InterviewAnalysis).filter(InterviewAnalysis.interview_id == interview_id).delete(synchronize_session=False)
         db.query(Recording).filter(Recording.interview_id == interview_id).delete(synchronize_session=False)

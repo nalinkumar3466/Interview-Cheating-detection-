@@ -7,6 +7,12 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
+from app.models.interview import Interview
+from app.models.question import Question
+from app.models.canvas_response import CanvasResponse
+from app.models.recording import Recording
+from app.models.candidate_log import CandidateLog
+from app.models.interview_analysis import InterviewAnalysis
 
 # ensure backend package is importable
 here = os.path.dirname(__file__)

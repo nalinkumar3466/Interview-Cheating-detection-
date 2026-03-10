@@ -16,7 +16,8 @@ A comprehensive system for detecting cheating in video interviews using machine 
 - Python 3.8+
 - Node.js 16+
 - PostgreSQL (optional, SQLite for testing)
-
+pgcli -h localhost -p 5432 -U berribotuser -d berribot
+uvicorn app.main:app --reload
 ### 1. Backend Setup
 
 ```bash

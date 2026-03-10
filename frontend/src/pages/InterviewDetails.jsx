@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom' // Added useNavigate for disconnect
 import api from '../services/api'
+import CanvasPlayback from '../components/canvas/CanvasPlayback'
+import CanvasGradingPanel from '../components/admin/CanvasGradingPanel'
 
 export default function InterviewDetails(){
   const { id } = useParams()
@@ -12,6 +14,8 @@ export default function InterviewDetails(){
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [statusBadge, setStatusBadge] = useState('')
   const [videoUrl, setVideoUrl] = useState(null)
+  const [canvasResponses, setCanvasResponses] = useState([])
+  const [gradingCanvas, setGradingCanvas] = useState(null) // Track which canvas is being graded
   const videoRef = useRef(null)
 
   // --- NEW STATE FOR QUESTION SKIPPING ---
@@ -40,6 +44,11 @@ export default function InterviewDetails(){
       setRecordings([])
       setVideoUrl(null)
     })
+    
+    api.get(`/interviews/${id}/canvas-responses`)
+      .then(res => setCanvasResponses(res.data || []))
+      .catch(() => setCanvasResponses([]))
+    
     api.get(`/interviews/${id}/analysis`).then(res => { setAnalysis(res.data || null); setStatusBadge('Analyzed') }).catch(() => { setAnalysis(null); setStatusBadge('Pending') })
   }, [id])
 
@@ -110,12 +119,17 @@ export default function InterviewDetails(){
   }
 }
 
-  const jumpTo = (seconds) => {
+    const jumpTo = (seconds) => {
     if(videoRef.current){
       videoRef.current.currentTime = seconds
       videoRef.current.play()
     }
   }
+
+  // Base URL for serving static uploads (mounted at /uploads on backend)
+  const BASE_URL = api?.defaults?.baseURL || ''
+  const canvasSketches = recordings.filter(r => (r?.answer_text || '').includes('canvas-sketch'))
+
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -180,8 +194,199 @@ export default function InterviewDetails(){
             )}
           </div>
 
+          {/* Canvas Responses - Separated from Gaze Analysis */}
+          {canvasResponses && canvasResponses.length > 0 && (
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
+                <h3 className="text-2xl font-bold text-black dark:text-white">🎨 Canvas Drawing Assessment</h3>
+                <span className="text-xs font-semibold px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full">
+                  {canvasResponses.length} submission{canvasResponses.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              
+              <div className="space-y-8">
+                {canvasResponses.map((response, idx) => {
+                  const questionText = interview?.questions?.find(q => q.id === response.question_id)?.text || `Question ${response.question_id}`;
+                  const metadata = response.session_metadata || response.metadata || {};
+                  const isGraded = response.structure_score !== null && response.clarity_score !== null && response.completeness_score !== null;
+                  
+                  return (
+                  <div key={response.id} className="border-2 border-blue-200 dark:border-blue-700 rounded-lg p-6 bg-gradient-to-br from-blue-50 to-slate-50 dark:from-slate-700 dark:to-slate-800">
+                    {/* Header with question and submission info */}
+                    <div className="mb-4">
+                      <h4 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+                        📋 {questionText}
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Submitted: {new Date(response.created_at).toLocaleString()}
+                      </p>
+                                        </div>
+                    {/* Metadata Bar */}
+
+                    <div className="flex gap-6 mb-6 p-3 bg-white dark:bg-slate-600 rounded-lg border border-slate-200 dark:border-slate-500">
+                      {metadata.strokeCount !== undefined && (
+                        <div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Strokes</p>
+                          <p className="text-lg font-bold text-slate-900 dark:text-white">{metadata.strokeCount}</p>
+                        </div>
+                      )}
+                      {metadata.duration !== undefined && (
+                        <div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Duration</p>
+                          <p className="text-lg font-bold text-slate-900 dark:text-white">{metadata.duration}s</p>
+                        </div>
+                      )}
+                      {isGraded && (
+                        <div className="ml-auto">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Overall Score</p>
+                          <p className="text-2xl font-bold text-green-600 dark:text-green-400">{response.overall_score?.toFixed(1)}/5</p>
+                        </div>
+                      )}
+                      {!isGraded && (
+                        <div className="ml-auto">
+                          <span className="text-xs font-semibold px-3 py-1 bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 rounded">
+                            ⏳ Pending Grade
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Final Drawing Image */}
+                    {response.final_image_base64 && (
+                      <div className="mb-6">
+                        <h5 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">Final Drawing Submission</h5>
+                        <div className="border border-slate-300 dark:border-slate-500 rounded-lg overflow-hidden bg-white">
+                          <img 
+                            src={response.final_image_base64} 
+                            alt="Canvas drawing submission" 
+                            className="w-full rounded"
+                            style={{ maxHeight: '500px', objectFit: 'contain', backgroundColor: '#fff' }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Drawing Replay */}
+                    {response.strokes_json && response.strokes_json.length > 0 && (
+                      <div className="mb-6">
+                        <h5 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">Drawing Replay (Optional)</h5>
+                        <details className="border border-slate-300 dark:border-slate-500 rounded-lg p-3 bg-white dark:bg-slate-700">
+                          <summary className="cursor-pointer font-medium text-slate-700 dark:text-slate-300">
+                            ▶️ Click to view step-by-step replay
+                          </summary>
+                          <div className="mt-4">
+                            <CanvasPlayback 
+                              strokes={response.strokes_json} 
+                              metadata={metadata}
+                            />
+                          </div>
+                        </details>
+                      </div>
+                    )}
+
+                    {/* Grading Section */}
+                    {isGraded ? (
+                      /* Show Completed Rubric */
+                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/30 border-2 border-green-300 dark:border-green-700 rounded-lg p-6 mb-6">
+                        <div className="flex items-center mb-4">
+                          <h5 className="text-lg font-semibold text-green-900 dark:text-green-300">✅ Assessment Complete</h5>
+                        </div>
+                        
+                        <div className="grid grid-cols-4 gap-4 mb-4">
+                          <div className="text-center p-3 bg-white dark:bg-slate-700 rounded-lg border border-green-200 dark:border-green-600">
+                            <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">Structure</p>
+                            <p className="text-2xl font-bold text-green-700 dark:text-green-400">
+                              {response.structure_score.toFixed(1)}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">/5</p>
+                          </div>
+                          <div className="text-center p-3 bg-white dark:bg-slate-700 rounded-lg border border-green-200 dark:border-green-600">
+                            <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">Clarity</p>
+                            <p className="text-2xl font-bold text-green-700 dark:text-green-400">
+                              {response.clarity_score.toFixed(1)}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">/5</p>
+                          </div>
+                          <div className="text-center p-3 bg-white dark:bg-slate-700 rounded-lg border border-green-200 dark:border-green-600">
+                            <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">Completeness</p>
+                            <p className="text-2xl font-bold text-green-700 dark:text-green-400">
+                              {response.completeness_score.toFixed(1)}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">/5</p>
+                          </div>
+                          <div className="text-center p-3 bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-800 dark:to-emerald-800 rounded-lg border-2 border-green-400 dark:border-green-600">
+                            <p className="text-xs text-green-700 dark:text-green-300 font-semibold mb-1">OVERALL</p>
+                            <p className="text-3xl font-bold text-green-700 dark:text-green-400">
+                              {response.overall_score.toFixed(1)}
+                            </p>
+                            <p className="text-xs text-green-700 dark:text-green-300 font-semibold">/5</p>
+                          </div>
+                        </div>
+                        
+                        {response.rubric_feedback && (
+                          <div className="p-3 bg-white dark:bg-slate-700 border border-green-200 dark:border-green-600 rounded">
+                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Grader Comments:</p>
+                            <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                              {response.rubric_feedback}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* Show Grading Panel for ungraded submissions */
+                      <div className="mb-6">
+                        <CanvasGradingPanel 
+                          response={response} 
+                          interview_id={id}
+                          onUpdateGrade={(updatedResponse) => {
+                            setCanvasResponses(prev =>
+                              prev.map(r =>
+                                r.id === updatedResponse.id ? updatedResponse : r
+                              )
+                            );
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+                    {/* Canvas Sketches saved to uploads (fallback) */}
+          {canvasSketches.length > 0 && (
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
+                <h3 className="text-2xl font-bold text-black dark:text-white">🖼️ Canvas Sketch Submissions</h3>
+                <span className="text-xs font-semibold px-3 py-1 bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 rounded-full">
+                  {canvasSketches.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {canvasSketches.map((s) => (
+                  <div key={s.id} className="border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden bg-white dark:bg-slate-700">
+                    <div className="p-3 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between">
+                      <span>Sketch</span>
+                      <span>{s.created_at ? new Date(s.created_at).toLocaleString() : ''}</span>
+                    </div>
+                    <img
+                      src={`${BASE_URL || ''}${s.file_url || ''}`}
+                      alt="Canvas sketch"
+                      className="w-full"
+                      style={{ maxHeight: '520px', objectFit: 'contain', backgroundColor: '#fff' }}
+                      loading="lazy"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Analysis */}
           <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-6 shadow-sm">
+
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
               <h3 className="text-2xl font-bold text-black dark:text-white">🔍 Analysis</h3>
               <button onClick={runAnalysis} disabled={isAnalyzing} className="px-6 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white font-semibold rounded-lg hover:from-indigo-600 hover:to-indigo-700 disabled:opacity-60 transition-all shadow-lg hover:shadow-xl">

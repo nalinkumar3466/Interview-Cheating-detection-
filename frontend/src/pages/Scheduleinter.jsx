@@ -207,6 +207,7 @@ export default function ScheduleInterview(){
 											<option value="coding">Coding</option>
 											<option value="explain">Explanation</option>
 											<option value="multiple">Multiple Choice</option>
+											<option value="sketch">Sketch / System Design</option>
 										</select>
 									</div>
 								</div>
