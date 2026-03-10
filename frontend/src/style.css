@@ -14,8 +14,7 @@
   .brand-sub { @apply text-sm text-indigo-100 }
 
   .runner-root { @apply p-6 }
-  .runner-inner { @apply flex gap-6 max-w-[1200px] mx-auto }
-
+  .sketch-layout { @apply max-w-full w-full mx-0; }
   .question-card.centered { @apply w-full bg-white p-7 rounded-xl shadow-xl max-w-[640px] text-center }
   .question-text { @apply text-lg text-slate-900 leading-7 }
   .avatar-circle { @apply w-[150px] h-[150px] rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-lg bg-gradient-to-br from-pink-500 to-indigo-500 }

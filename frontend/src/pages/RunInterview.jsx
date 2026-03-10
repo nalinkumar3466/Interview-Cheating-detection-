@@ -6,6 +6,7 @@ import "../style.css";
 import "../styles/interview.css";
 import BotSpeaker from '../components/BotSpeaker'
 import { useLocation } from 'react-router-dom'
+import ArchitectureCanvas from "../components/sketch/ArchitectureCanvas";
 
 export default function RunInterview({ candidateMode = false, candidateToken = null, interviewIdProp = null, autoStart = false }) {
   const { id: idParam } = useParams();
@@ -36,6 +37,8 @@ export default function RunInterview({ candidateMode = false, candidateToken = n
   const vadIntervalRef = useRef(null);
   const recorderRef = useRef(null);
   const segmentStartRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [canvasData, setCanvasData] = useState(null);
 
   // VAD & Skip Detection Refs
   const skipTriggeredRef = useRef(false);
@@ -148,6 +151,12 @@ export default function RunInterview({ candidateMode = false, candidateToken = n
 
       vadIntervalRef.current = setInterval(() => {
         try {
+                    // Disable VAD auto-skip for canvas questions (sketch/canvas_drawing)
+          const currentQuestion = questionsRef.current[indexRef.current];
+          const cqType = (currentQuestion?.type || '').toLowerCase();
+          if (cqType === 'sketch' || cqType === 'canvas_drawing') {
+            return;
+          }
     analyser.getFloatTimeDomainData(dataArray);
 
     let sum = 0;
@@ -417,6 +426,8 @@ export default function RunInterview({ candidateMode = false, candidateToken = n
   if (!questions.length) return <div className="runner-root">Loading...</div>;
 
   const q = questions[index];
+  const isCanvas = ((q?.type || '').toLowerCase() === 'canvas_drawing') || ((q?.type || '').toLowerCase() === 'sketch');
+
 
   return (
     <div className="runner-root">
@@ -428,27 +439,117 @@ export default function RunInterview({ candidateMode = false, candidateToken = n
           </div>
         </div>
       )}
-      <div className="runner-inner row-layout">
-        <div className="question-palette">
+            <div className={`runner-inner row-layout ${isCanvas ? "sketch-layout-active" : ""}`}>
+
+          <div className="question-palette">
           <div className="palette-card">
-            <div className="artwork-sphere"><BotSpeaker speaking={recording || ttsPlaying} /></div>
+            <div className="artwork-sphere">
+              <BotSpeaker speaking={ttsPlaying} />
+            </div>
+
             <div className="palette-text">
-              <div className="q-meta">Question {index + 1} of {questions.length}</div>
+              <div className="q-meta">
+                Question {index + 1} of {questions.length}
+              </div>
               <div className="q-body">{q.text}</div>
             </div>
           </div>
+
+                    {/* Camera below question block in sketch mode */}
+          {isCanvas && (
+
+            <div className="sketch-camera-wrapper">
+              <video
+                ref={localPreviewRef}
+                className="camera-frame"
+                muted
+                playsInline
+              />
+            </div>
+          )}
         </div>
 
         <div className="live-column">
+                                        {/* Show canvas only for sketch/canvas_drawing questions */}
+          {isCanvas && (
+
+            <div style={{ marginTop: "20px" }}>
+              <ArchitectureCanvas
+                ref={canvasRef}
+                interviewId={id}
+                questionId={q.id}
+                onSubmit={({ strokes, pngData }) => {
+                  // compute some metadata from the stroke data
+                  const strokeCount = strokes.length;
+                                    let durationSec = 0;
+                  if (strokeCount > 0) {
+                    const firstTime = strokes[0].startedAt;
+                    let lastTime = firstTime;
+                    strokes.forEach(s => {
+                      (s.points || []).forEach(p => {
+                        if (typeof p.t === 'number' && p.t > lastTime) lastTime = p.t;
+                      });
+                    });
+                    // Backend schema expects integer seconds
+                    durationSec = Math.max(0, Math.round((lastTime - firstTime) / 1000));
+                  }
+
+                  const payload = {
+                    question_id: q.id,
+                    strokes,
+                    final_image: pngData,
+                    duration: durationSec,
+                    stroke_count: strokeCount,
+                  };
+
+                  const path = candidateMode
+                    ? `/candidate/interviews/${id}/canvas-submit`
+                    : `/interviews/${id}/canvas-submit`;
+
+                  const headers = candidateMode
+                    ? { "X-Candidate-Token": candidateToken }
+                    : {};
+
+                                    api.post(path, payload, { headers })
+                    .then(() => {
+                      console.log("Canvas submitted");
+                      handleSubmitAndNext();
+                    })
+                    .catch(err => {
+                      const detail = err?.response?.data || err?.message;
+                      console.error("Canvas upload failed", detail);
+                      alert(`Canvas upload failed: ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`);
+                    });
+                }}
+              />
+            </div>
+          )}
+                    { !isCanvas && (
+
           <div className="live-card">
             <div className="live-frame"><video ref={localPreviewRef} className="camera-frame" muted playsInline /></div>
             <div className="decibel-indicator">
               <div className="decibel-bar"><div className="decibel-level" style={{ width: `${convertDbfsToUiScale(dbValue)}%` }} /></div>
               <div className="decibel-value">Level: {convertDbfsToUiScale(dbValue).toFixed(0)}</div>
-            </div>
+            </div> 
           </div>
+          )}
           <div className="controls-row">
-            <button className="btn-primary" onClick={() => handleSubmitAndNext()}>Skip</button>
+                        {isCanvas && (
+
+              <button 
+                className="btn-primary" 
+                onClick={() => canvasRef.current?.submit()}
+              >
+                Submit
+              </button>
+            )}
+                      { !isCanvas && (
+
+              <button className="btn-primary" onClick={() => handleSubmitAndNext()}>
+                Skip
+              </button>
+            )}
             <button className="btn-secondary" onClick={() => { stopRecording(); navigate('/'); }}>Disconnect</button>
           </div>
         </div>

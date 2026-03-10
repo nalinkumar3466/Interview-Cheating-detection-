@@ -5,8 +5,11 @@ from app.models.interview import Interview as InterviewModel
 from app.models.question import Question as QuestionModel
 from app.models.recording import Recording
 from app.models.candidatelog import CandidateLog
-import os, time
+from app.models.canvas_response import CanvasResponse as CanvasResponseModel
+import os, time, json
 from datetime import datetime, timezone
+from pydantic import BaseModel
+from typing import List, Optional
 
 router = APIRouter(prefix="/candidate", tags=["candidate"])
 
@@ -96,3 +99,159 @@ def log(payload: dict = Body(...), db: Session = Depends(get_db)):
     db.commit()
     db.refresh(cl)
     return {'status': 'logged', 'id': cl.id, 'valid_token': ok}
+
+# Canvas Drawing Schema for candidate submission
+class CandidateCanvasSubmission(BaseModel):
+    question_id: int
+    strokes: List[dict]
+    final_image: str
+    duration: Optional[int] = None
+    stroke_count: Optional[int] = None
+
+
+def _compute_canvas_metadata(strokes_json):
+    """
+    Compute canvas session metadata:
+    - stroke_count: total number of strokes
+    - duration: time from first to last point (seconds)
+    """
+    if not strokes_json:
+        return {"strokeCount": 0, "duration": 0}
+
+    stroke_count = len(strokes_json)
+    
+    # Find min and max timestamps
+    min_time = float('inf')
+    max_time = 0
+    
+    for stroke in strokes_json:
+        if isinstance(stroke, dict) and 'points' in stroke:
+            points = stroke['points']
+            if points:
+                for point in points:
+                    if isinstance(point, dict) and 't' in point:
+                        t = point['t']
+                        if t < min_time:
+                            min_time = t
+                        if t > max_time:
+                            max_time = t
+    
+    # Duration in seconds
+    duration = 0
+    if min_time != float('inf') and max_time != 0:
+        duration = (max_time - min_time) / 1000.0
+    
+    return {
+        "strokeCount": stroke_count,
+        "duration": max(0, int(duration)),
+        "submittedAt": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@router.post('/interviews/{interview_id}/sketch')
+def submit_sketch(
+    interview_id: int,
+    question_id: int = Form(...),
+    strokes: str = Form(...),
+    image: str = Form(...),
+    x_candidate_token: str | None = Header(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Candidate submission of canvas sketch (form data version).
+    Validates token and stores canvas response with computed metadata.
+    """
+    ok, interview = _validate_token(db, x_candidate_token, interview_id)
+    if not ok:
+        raise HTTPException(status_code=403, detail='Invalid candidate token')
+    
+    # Parse strokes JSON
+    try:
+        strokes_json = json.loads(strokes)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid strokes JSON")
+    
+        # Verify question exists and is canvas_drawing type
+    question = db.query(QuestionModel).filter(QuestionModel.id == question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail='Question not found')
+    qtype = (question.type or '').lower()
+    if qtype not in ("canvas_drawing", "sketch"):
+        raise HTTPException(status_code=400, detail='Question is not a canvas_drawing type')
+
+    
+    # Compute metadata
+    metadata = _compute_canvas_metadata(strokes_json)
+    
+    # Create canvas response record
+    response = CanvasResponseModel(
+        interview_id=interview_id,
+        question_id=question_id,
+        strokes_json=strokes_json,
+        final_image_base64=image,
+        duration_ms = metadata["duration"] * 1000,
+        stroke_count = metadata["strokeCount"],
+    )
+    
+    db.add(response)
+    db.commit()
+    db.refresh(response)
+    
+    return {
+        'status': 'ok',
+        'response_id': response.id,
+        'metadata': metadata,
+        'created_at': response.created_at.isoformat() if response.created_at else None
+    }
+
+
+@router.post('/interviews/{interview_id}/canvas-submit')
+def submit_canvas(
+    interview_id: int,
+    payload: CandidateCanvasSubmission,
+    x_candidate_token: str | None = Header(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Candidate submission of canvas drawing response (JSON payload version).
+    Validates token and stores canvas response.
+    """
+    ok, interview = _validate_token(db, x_candidate_token, interview_id)
+    if not ok:
+        raise HTTPException(status_code=403, detail='Invalid candidate token')
+    
+        # Verify question exists and is canvas_drawing type
+    question = db.query(QuestionModel).filter(QuestionModel.id == payload.question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail='Question not found')
+    qtype = (question.type or '').lower()
+    if qtype not in ("canvas_drawing", "sketch"):
+        raise HTTPException(status_code=400, detail='Question is not a canvas_drawing type')
+
+    
+    # Prepare metadata
+    metadata = {
+        "duration": payload.duration,
+        "strokeCount": payload.stroke_count,
+        "submittedAt": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Create canvas response record
+    response = CanvasResponseModel(
+        interview_id=interview_id,
+        question_id=payload.question_id,
+        strokes_json=payload.strokes,
+        final_image_base64=payload.final_image,
+        duration_ms = metadata["duration"] * 1000,
+        stroke_count = metadata["strokeCount"],
+    )
+    
+    db.add(response)
+    db.commit()
+    db.refresh(response)
+    
+    return {
+        'status': 'ok',
+        'response_id': response.id,
+        'created_at': response.created_at.isoformat() if response.created_at else None
+    }
