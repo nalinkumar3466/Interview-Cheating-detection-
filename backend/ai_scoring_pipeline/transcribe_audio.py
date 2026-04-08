@@ -4,8 +4,8 @@ from faster_whisper import WhisperModel
 
 model = WhisperModel("base", device="cpu", compute_type="int8_float32")
 
-AUDIO_DIR = "backend/uploads/audio"
-TRANSCRIPT_DIR = "backend/uploads/transcripts"
+AUDIO_DIR = "uploads/audio"
+TRANSCRIPT_DIR = "uploads/transcripts"
 
 os.makedirs(TRANSCRIPT_DIR, exist_ok=True)
 

@@ -26,11 +26,22 @@ def extract_audio(video_path, output_path):
     ]
 
     try:
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print(f"Saved: {os.path.basename(output_path)}")
-    except subprocess.CalledProcessError:
-        print(f"Skipping corrupted video: {os.path.basename(video_path)}")
+        subprocess.run(
+            command,
+            check=True,
+            stdout=subprocess.DEVNULL
+        )
 
+        if os.path.exists(output_path):
+            print(f"✅ Audio saved: {output_path}")
+            return output_path
+        else:
+            print("❌ Audio file not created")
+            return None
+
+    except subprocess.CalledProcessError:
+        print(f"❌ FFmpeg failed for: {video_path}")
+        return None
 
 def process_videos():
     ensure_audio_directory()

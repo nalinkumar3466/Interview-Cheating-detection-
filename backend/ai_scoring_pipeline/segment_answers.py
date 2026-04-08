@@ -1,82 +1,67 @@
-import json
+from collections import defaultdict
+import math
 
-def segment_qa_with_timestamps(transcript, silence_threshold=5):
+def segment_qa_fixed_windows(transcript, question_duration=2, cycle_duration=9):
 
-    qa_pairs = []
+    qa_dict = defaultdict(lambda: {
+        "question": [],
+        "answer": [],
+        "question_start": None,
+        "question_end": None,
+        "answer_start": None,
+        "answer_end": None
+    })
 
-    current_question = []
-    current_answer = []
+    # 🔹 Find total duration
+    max_time = max(seg["end"] for seg in transcript)
+    total_buckets = math.ceil(max_time / cycle_duration)
 
-    q_start, q_end = None, None
-    a_start, a_end = None, None
-
-    mode = "question"   # first segment assumed as question
-
-    for i in range(len(transcript)):
-
-        segment = transcript[i]
+    # 🔹 Assign segments to buckets
+    for segment in transcript:
         text = segment["text"]
         start = segment["start"]
         end = segment["end"]
 
-        # ---------------------------
-        # QUESTION MODE
-        # ---------------------------
-        if mode == "question":
+        bucket = int(start // cycle_duration)
 
-            if q_start is None:
-                q_start = start
+        q_start_time = bucket * cycle_duration
+        q_end_time = q_start_time + question_duration
 
-            current_question.append(text)
-            q_end = end
+        # QUESTION WINDOW
+        if q_start_time <= start < q_end_time:
 
-            mode = "answer"
-            continue
+            if qa_dict[bucket]["question_start"] is None:
+                qa_dict[bucket]["question_start"] = start
 
-        # ---------------------------
-        # ANSWER MODE
-        # ---------------------------
-        if mode == "answer":
+            qa_dict[bucket]["question"].append(text)
+            qa_dict[bucket]["question_end"] = end
 
-            if a_start is None:
-                a_start = start
+        # ANSWER WINDOW
+        else:
+            if qa_dict[bucket]["answer_start"] is None:
+                qa_dict[bucket]["answer_start"] = start
 
-            current_answer.append(text)
-            a_end = end
+            qa_dict[bucket]["answer"].append(text)
+            qa_dict[bucket]["answer_end"] = end
 
-            # Check silence gap
-            if i < len(transcript) - 1:
-                next_start = transcript[i+1]["start"]
-                gap = next_start - end
+    # 🔹 Build ALL buckets (even empty ones)
+    qa_pairs = []
 
-                if gap >= silence_threshold:
-                    qa_pairs.append({
-                        "question": " ".join(current_question),
-                        "question_start": q_start,
-                        "question_end": q_end,
-                        "answer": " ".join(current_answer),
-                        "answer_start": a_start,
-                        "answer_end": a_end
-                    })
+    for bucket in range(total_buckets):
 
-                    # Reset everything
-                    current_question = []
-                    current_answer = []
+        q = qa_dict[bucket]
 
-                    q_start, q_end = None, None
-                    a_start, a_end = None, None
-
-                    mode = "question"
-
-    # अंतिम pair (last one)
-    if current_question and current_answer:
         qa_pairs.append({
-            "question": " ".join(current_question),
-            "question_start": q_start,
-            "question_end": q_end,
-            "answer": " ".join(current_answer),
-            "answer_start": a_start,
-            "answer_end": a_end
+            "question": " ".join(q["question"]) if q["question"] else "",
+            "question_start": q["question_start"],
+            "question_end": q["question_end"],
+            "answer": " ".join(q["answer"]) if q["answer"] else "",
+            "answer_start": q["answer_start"],
+            "answer_end": q["answer_end"]
         })
 
     return qa_pairs
+
+
+
+

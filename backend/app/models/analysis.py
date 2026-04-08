@@ -13,6 +13,10 @@ class InterviewAnalysis(Base):
     analysis_report = Column(Text, nullable=True)
     risk_level = Column(String, nullable=True)  # low, medium, high
     effective_risk_percentage = Column(Float, nullable=True)
+    video_path = Column(String, nullable=True)
+    question = Column(String, nullable=True)
+    answer = Column(String, nullable=True)
+    score = Column(Float, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
