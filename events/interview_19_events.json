@@ -1,0 +1,44 @@
+[
+    {
+        "event": "WARMUP Gaze",
+        "start": 0.0,
+        "end": 0.005,
+        "details": "Duration 0.01 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 0.005,
+        "end": 0.309,
+        "details": "Duration 0.30 sec"
+    },
+    {
+        "event": "UP Gaze",
+        "start": 0.309,
+        "end": 0.316,
+        "details": "Duration 0.01 sec"
+    },
+    {
+        "event": "Frequent Distraction",
+        "start": 0.0,
+        "end": 0.316,
+        "details": "3 rapid gaze switches (<2.0s)"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 0.316,
+        "end": 0.568,
+        "details": "Duration 0.25 sec"
+    },
+    {
+        "event": "UP Gaze",
+        "start": 0.568,
+        "end": 0.575,
+        "details": "Duration 0.01 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 0.575,
+        "end": 0.833,
+        "details": "Duration 0.26 sec"
+    }
+]
