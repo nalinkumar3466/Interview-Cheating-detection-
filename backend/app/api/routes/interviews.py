@@ -835,3 +835,84 @@ def delete_interview(interview_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail='Failed to delete interview')
 
     return {"status": "deleted"}
+
+
+# -------------------- AI Transcription & Scoring Pipeline --------------------
+
+@router.post("/{interview_id}/transcribe")
+def trigger_transcription_pipeline(
+    interview_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Trigger the AI scoring pipeline for a given interview.
+    Extracts audio from the video recording, transcribes it,
+    segments into Q&A pairs, scores each segment, and saves to DB.
+    Returns the full transcription and scored segments.
+    """
+    # Check interview exists
+    interview = db.query(InterviewModel).filter(
+        InterviewModel.id == interview_id
+    ).first()
+    if not interview:
+        raise HTTPException(404, "Interview not found")
+
+    # Get the latest recording
+    recording = db.query(Recording).filter(
+        Recording.interview_id == interview_id
+    ).order_by(Recording.created_at.desc()).first()
+
+    if not recording:
+        raise HTTPException(400, "No recordings found for this interview")
+
+    video_path = recording.file_path
+    if not video_path or not os.path.exists(video_path):
+        raise HTTPException(400, f"Video file not found at: {video_path}")
+
+    try:
+        from ai_scoring_pipeline.pipeline import run_transcription_pipeline
+        result = run_transcription_pipeline(video_path, interview_id)
+
+        return {
+            "status": "completed",
+            "full_text": result.get("full_text", ""),
+            "transcription": result.get("transcription", []),
+            "scored_segments": result.get("scored_segments", []),
+        }
+
+    except Exception as e:
+        logger.exception("Transcription pipeline failed for interview %s: %s", interview_id, e)
+        raise HTTPException(500, f"Transcription pipeline failed: {str(e)}")
+
+
+@router.get("/{interview_id}/transcription")
+def get_transcription(
+    interview_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Fetch saved transcription & scoring results from the DB.
+    Returns all interview_analysis rows that have question/answer data
+    (populated by the ai_scoring_pipeline).
+    """
+    rows = db.query(InterviewAnalysis).filter(
+        InterviewAnalysis.interview_id == interview_id,
+        InterviewAnalysis.question.isnot(None),
+    ).order_by(InterviewAnalysis.created_at.asc()).all()
+
+    if not rows:
+        return {"status": "not_found", "scored_segments": []}
+
+    scored_segments = []
+    for row in rows:
+        scored_segments.append({
+            "question": row.question or "",
+            "answer": row.answer or "",
+            "final_score": row.score,
+            "id": row.id,
+        })
+
+    return {
+        "status": "completed",
+        "scored_segments": scored_segments,
+    }

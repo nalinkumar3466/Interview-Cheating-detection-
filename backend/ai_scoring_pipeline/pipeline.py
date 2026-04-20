@@ -30,9 +30,13 @@ def get_video_path(interview_id):
         db.close()
 
 
-def run_pipeline(video_path, interview_id):
+def run_transcription_pipeline(video_path, interview_id):
+    """Run the full pipeline using the provided video_path directly.
+
+    Returns a dict with transcription text, segments, and scored segments
+    so the API can return results to the frontend.
+    """
     # 1. Extract audio
-    video_path = get_video_path(interview_id)
     audio_output_path = os.path.join(BASE_DIR, "uploads", f"audio_{interview_id}.wav")
 
     print("🎬 Video path:", video_path)
@@ -52,6 +56,9 @@ def run_pipeline(video_path, interview_id):
     if not transcription:
         raise Exception("Transcription failed")
 
+    # Build full transcript text
+    full_text = " ".join(seg["text"] for seg in transcription)
+
     # 3. Segment
     print("✂️ Segmenting...")
     segments = segment_qa_fixed_windows(transcription)
@@ -64,8 +71,12 @@ def run_pipeline(video_path, interview_id):
     print("💾 Saving results...")
     save_results(video_path, scored_segments, interview_id)
 
-    print("✅ Pipeline completed!")
+    print("✅ Transcription pipeline completed!")
 
-    return scored_segments
-
+    return {
+        "transcription": transcription,
+        "full_text": full_text,
+        "segments": segments,
+        "scored_segments": scored_segments,
+    }
 
