@@ -100,7 +100,7 @@ export default function InterviewDetails(){
   const handleDisconnect = () => {
     // Navigates away to simulate disconnection
     alert("Session disconnected due to inactivity threshold.");
-    navigate('/interviews'); 
+    navigate('/interviews/'); 
   };
   // ---------------------------------------------
 

@@ -13,7 +13,7 @@ export default function Dashboard(){
 
   useEffect(() => {
     setLoading(true)
-    api.get('/interviews')
+    api.get('/interviews/')
       .then(res => setInterviews(res.data || []))
       .catch(err => setError(err.message || 'Error'))
       .finally(() => setLoading(false))

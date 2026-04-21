@@ -79,7 +79,7 @@ export default function ScheduleInterview(){
 
 		setSubmitting(true)
 		try{
-			const res = await api.post('/interviews', payload)
+			const res = await api.post('/interviews/', payload)
 			setMessage(`Scheduled with id ${res.data.id}`)
 			if (res?.data?.token) {
 				const origin = window.location.origin
