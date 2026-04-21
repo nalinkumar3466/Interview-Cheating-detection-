@@ -18,6 +18,7 @@ from app.models.canvas_response import CanvasResponse as CanvasResponseModel
 import os
 from sqlalchemy import insert
 import uuid
+from uuid import uuid4
 from datetime import datetime, timezone, timedelta
 import os
 import sys
@@ -161,6 +162,7 @@ def create_question(interview_id: int, payload: QuestionPayload, db: Session = D
     return q
 
 @router.get("/{interview_id}", response_model=InterviewOut)
+@router.get("/{interview_id}/", response_model=InterviewOut)
 def get_interview(interview_id: int, db: Session = Depends(get_db)):
     item = db.query(InterviewModel).filter(InterviewModel.id == interview_id).first()
     if not item:

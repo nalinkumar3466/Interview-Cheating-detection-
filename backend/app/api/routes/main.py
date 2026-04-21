@@ -15,17 +15,18 @@ import logging
 
 logging.getLogger().info("DATABASE engine url: %s", getattr(engine, "url", "<unknown>"))
 
+print("🔥 MAIN.PY LOADED")
 
 app = FastAPI(title='Berribot API')
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173","http://localhost:3000"],
+    allow_origins=["http://localhost:5174",
+                   "http://localhost:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],  # Add this line
-
+    allow_headers=["*"]
 )
 
 app.include_router(admin.router)
