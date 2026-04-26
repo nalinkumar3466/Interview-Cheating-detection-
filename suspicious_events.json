@@ -2,73 +2,235 @@
     {
         "event": "RIGHT Gaze",
         "start": 0.0,
-        "end": 1.44,
-        "details": "Duration 1.44 sec"
-    },
-    {
-        "event": "UP Gaze",
-        "start": 1.44,
-        "end": 1.8,
-        "details": "Duration 0.36 sec"
-    },
-    {
-        "event": "RIGHT Gaze",
-        "start": 1.8,
-        "end": 7.8,
-        "details": "Duration 6.00 sec"
+        "end": 0.24,
+        "details": "Duration 0.24 sec"
     },
     {
         "event": "DOWN Gaze",
-        "start": 7.8,
-        "end": 8.16,
-        "details": "Duration 0.36 sec"
+        "start": 0.24,
+        "end": 0.832,
+        "details": "Duration 0.59 sec"
     },
     {
         "event": "RIGHT Gaze",
-        "start": 8.16,
-        "end": 9.48,
-        "details": "Duration 1.32 sec"
-    },
-    {
-        "event": "UP Gaze",
-        "start": 9.48,
-        "end": 10.38,
-        "details": "Duration 0.90 sec"
+        "start": 0.832,
+        "end": 1.024,
+        "details": "Duration 0.19 sec"
     },
     {
         "event": "Frequent Distraction",
-        "start": 7.8,
-        "end": 10.38,
+        "start": 0.0,
+        "end": 1.024,
         "details": "3 rapid gaze switches (<2.0s)"
     },
     {
-        "event": "RIGHT Gaze",
-        "start": 10.38,
-        "end": 12.9,
-        "details": "Duration 2.52 sec"
-    },
-    {
-        "event": "UP Gaze",
-        "start": 12.9,
-        "end": 13.2,
+        "event": "DOWN Gaze",
+        "start": 1.024,
+        "end": 1.328,
         "details": "Duration 0.30 sec"
     },
     {
         "event": "RIGHT Gaze",
-        "start": 13.2,
-        "end": 13.62,
+        "start": 1.328,
+        "end": 1.472,
+        "details": "Duration 0.14 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 1.472,
+        "end": 1.552,
+        "details": "Duration 0.08 sec"
+    },
+    {
+        "event": "Frequent Distraction",
+        "start": 1.024,
+        "end": 1.552,
+        "details": "3 rapid gaze switches (<2.0s)"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 1.552,
+        "end": 1.968,
         "details": "Duration 0.42 sec"
     },
     {
         "event": "UP Gaze",
-        "start": 13.62,
-        "end": 13.98,
-        "details": "Duration 0.36 sec"
+        "start": 1.968,
+        "end": 2.048,
+        "details": "Duration 0.08 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 2.048,
+        "end": 2.176,
+        "details": "Duration 0.13 sec"
     },
     {
         "event": "Frequent Distraction",
-        "start": 12.9,
-        "end": 13.98,
+        "start": 1.552,
+        "end": 2.176,
         "details": "3 rapid gaze switches (<2.0s)"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 2.176,
+        "end": 2.272,
+        "details": "Duration 0.10 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 2.272,
+        "end": 2.336,
+        "details": "Duration 0.06 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 2.336,
+        "end": 2.864,
+        "details": "Duration 0.53 sec"
+    },
+    {
+        "event": "Long Gaze Away",
+        "start": 0.0,
+        "end": 2.864,
+        "details": "RIGHT for 2.86 sec"
+    },
+    {
+        "event": "Frequent Distraction",
+        "start": 2.176,
+        "end": 2.864,
+        "details": "3 rapid gaze switches (<2.0s)"
+    },
+    {
+        "event": "CENTER Gaze",
+        "start": 2.864,
+        "end": 2.928,
+        "details": "Duration 0.06 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 2.928,
+        "end": 3.488,
+        "details": "Duration 0.56 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 3.488,
+        "end": 3.936,
+        "details": "Duration 0.45 sec"
+    },
+    {
+        "event": "Frequent Distraction",
+        "start": 2.864,
+        "end": 3.936,
+        "details": "3 rapid gaze switches (<2.0s)"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 3.936,
+        "end": 4.512,
+        "details": "Duration 0.58 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 4.512,
+        "end": 4.72,
+        "details": "Duration 0.21 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 4.72,
+        "end": 5.168,
+        "details": "Duration 0.45 sec"
+    },
+    {
+        "event": "Frequent Distraction",
+        "start": 3.936,
+        "end": 5.168,
+        "details": "3 rapid gaze switches (<2.0s)"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 5.168,
+        "end": 5.952,
+        "details": "Duration 0.78 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 5.952,
+        "end": 6.128,
+        "details": "Duration 0.18 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 6.128,
+        "end": 6.384,
+        "details": "Duration 0.26 sec"
+    },
+    {
+        "event": "Frequent Distraction",
+        "start": 5.168,
+        "end": 6.384,
+        "details": "3 rapid gaze switches (<2.0s)"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 6.384,
+        "end": 6.496,
+        "details": "Duration 0.11 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 6.496,
+        "end": 6.816,
+        "details": "Duration 0.32 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 6.816,
+        "end": 7.088,
+        "details": "Duration 0.27 sec"
+    },
+    {
+        "event": "Frequent Distraction",
+        "start": 6.384,
+        "end": 7.088,
+        "details": "3 rapid gaze switches (<2.0s)"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 7.088,
+        "end": 7.584,
+        "details": "Duration 0.50 sec"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 7.584,
+        "end": 7.712,
+        "details": "Duration 0.13 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 7.712,
+        "end": 8.272,
+        "details": "Duration 0.56 sec"
+    },
+    {
+        "event": "Frequent Distraction",
+        "start": 7.088,
+        "end": 8.272,
+        "details": "3 rapid gaze switches (<2.0s)"
+    },
+    {
+        "event": "RIGHT Gaze",
+        "start": 8.272,
+        "end": 9.12,
+        "details": "Duration 0.85 sec"
+    },
+    {
+        "event": "DOWN Gaze",
+        "start": 9.12,
+        "end": 9.184,
+        "details": "Duration 0.06 sec"
     }
 ]

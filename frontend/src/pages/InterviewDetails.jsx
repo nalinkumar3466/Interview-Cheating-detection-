@@ -155,6 +155,37 @@ export default function InterviewDetails(){
     }
   }
 
+  // --- PDF Download helpers ---
+  const [downloadingGaze, setDownloadingGaze] = useState(false)
+  const [downloadingTranscript, setDownloadingTranscript] = useState(false)
+
+  const downloadPdf = async (type) => {
+    const setLoading = type === 'gaze' ? setDownloadingGaze : setDownloadingTranscript
+    try {
+      setLoading(true)
+      const endpoint = type === 'gaze'
+        ? `/interviews/${id}/report/gaze-pdf`
+        : `/interviews/${id}/report/transcription-pdf`
+      const res = await api.get(endpoint, { responseType: 'blob', timeout: 30000 })
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = type === 'gaze'
+        ? `gaze_report_interview_${id}.pdf`
+        : `transcription_report_interview_${id}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('PDF download failed:', e)
+      alert(e?.response?.data?.detail || 'Failed to download PDF report. Ensure data is available.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const getScoreColor = (score) => {
     if (score === null || score === undefined) return 'text-slate-500'
     if (score >= 7) return 'text-emerald-600 dark:text-emerald-400'
@@ -248,19 +279,36 @@ export default function InterviewDetails(){
           <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
               <h3 className="text-2xl font-bold text-black dark:text-white">🎙️ AI Transcription & Scoring</h3>
-              <button
-                id="run-transcription-btn"
-                onClick={runTranscription}
-                disabled={isTranscribing || !videoUrl}
-                className="px-6 py-2 bg-gradient-to-r from-purple-500 to-violet-600 text-white font-semibold rounded-lg hover:from-purple-600 hover:to-violet-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl"
-              >
-                {isTranscribing ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                    Processing...
-                  </span>
-                ) : '▶ Run Transcription'}
-              </button>
+              <div className="flex items-center gap-3">
+                {transcription && transcription.scored_segments && transcription.scored_segments.length > 0 && (
+                  <button
+                    id="download-transcription-pdf-btn"
+                    onClick={() => downloadPdf('transcription')}
+                    disabled={downloadingTranscript}
+                    className="px-5 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold rounded-lg hover:from-teal-600 hover:to-cyan-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center gap-2"
+                  >
+                    {downloadingTranscript ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                        Generating...
+                      </>
+                    ) : '📥 Download Transcription PDF'}
+                  </button>
+                )}
+                <button
+                  id="run-transcription-btn"
+                  onClick={runTranscription}
+                  disabled={isTranscribing || !videoUrl}
+                  className="px-6 py-2 bg-gradient-to-r from-purple-500 to-violet-600 text-white font-semibold rounded-lg hover:from-purple-600 hover:to-violet-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl"
+                >
+                  {isTranscribing ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      Processing...
+                    </span>
+                  ) : '▶ Run Transcription'}
+                </button>
+              </div>
             </div>
 
             {/* Error message */}
@@ -571,9 +619,26 @@ export default function InterviewDetails(){
 
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200 dark:border-slate-700">
               <h3 className="text-2xl font-bold text-black dark:text-white">🔍 Analysis</h3>
-              <button onClick={runAnalysis} disabled={isAnalyzing} className="px-6 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white font-semibold rounded-lg hover:from-indigo-600 hover:to-indigo-700 disabled:opacity-60 transition-all shadow-lg hover:shadow-xl">
-                {isAnalyzing ? '⏳ Running...' : '▶ Run Analysis'}
-              </button>
+              <div className="flex items-center gap-3">
+                {analysis && (
+                  <button
+                    id="download-gaze-pdf-btn"
+                    onClick={() => downloadPdf('gaze')}
+                    disabled={downloadingGaze}
+                    className="px-5 py-2 bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-semibold rounded-lg hover:from-teal-600 hover:to-cyan-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center gap-2"
+                  >
+                    {downloadingGaze ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                        Generating...
+                      </>
+                    ) : '📥 Download Gaze Report PDF'}
+                  </button>
+                )}
+                <button onClick={runAnalysis} disabled={isAnalyzing} className="px-6 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white font-semibold rounded-lg hover:from-indigo-600 hover:to-indigo-700 disabled:opacity-60 transition-all shadow-lg hover:shadow-xl">
+                  {isAnalyzing ? '⏳ Running...' : '▶ Run Analysis'}
+                </button>
+              </div>
             </div>
 
             {!analysis ? (

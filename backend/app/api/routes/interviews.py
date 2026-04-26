@@ -918,3 +918,294 @@ def get_transcription(
         "status": "completed",
         "scored_segments": scored_segments,
     }
+
+
+# -------------------- PDF Report Endpoints --------------------
+
+from fastapi.responses import StreamingResponse
+from io import BytesIO
+
+def _safe_text(text):
+    """Sanitize text for fpdf2 – replace characters that latin-1 cannot encode."""
+    if not text:
+        return ""
+    # Replace common problematic characters
+    return text.encode('latin-1', errors='replace').decode('latin-1')
+
+
+@router.get("/{interview_id}/report/gaze-pdf")
+def download_gaze_report_pdf(
+    interview_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate and return a downloadable PDF report of the gaze detection analysis
+    for the given interview. Includes risk level, gaze distribution percentages,
+    AI analysis report, and suspicious events.
+    """
+    from fpdf import FPDF
+
+    # Fetch interview
+    interview = db.query(InterviewModel).filter(
+        InterviewModel.id == interview_id
+    ).first()
+    if not interview:
+        raise HTTPException(404, "Interview not found")
+
+    # Fetch analysis
+    analysis = db.query(InterviewAnalysis).filter(
+        InterviewAnalysis.interview_id == interview_id
+    ).first()
+    if not analysis:
+        raise HTTPException(404, "No analysis data available for this interview. Run analysis first.")
+
+    try:
+        event_data = json.loads(analysis.event_percentages or "[]")
+    except Exception:
+        event_data = []
+
+    # Build PDF
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    # Title
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.cell(0, 12, _safe_text("Gaze Detection Analysis Report"), new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.ln(4)
+
+    # Interview Info
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 7, _safe_text(f"Interview: {interview.title or 'N/A'}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, _safe_text(f"Candidate: {interview.candidate_name or 'N/A'}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, _safe_text(f"Email: {interview.candidate_email or 'N/A'}"), new_x="LMARGIN", new_y="NEXT")
+    scheduled = interview.scheduled_at.strftime("%Y-%m-%d %H:%M UTC") if interview.scheduled_at else "N/A"
+    pdf.cell(0, 7, _safe_text(f"Scheduled At: {scheduled}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, _safe_text(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(6)
+
+    # Separator
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
+
+    # Risk Level
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, "Risk Assessment", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 12)
+    risk = analysis.risk_level or "Not determined"
+    pdf.cell(0, 8, _safe_text(f"Risk Level: {risk.upper()}"), new_x="LMARGIN", new_y="NEXT")
+    if analysis.effective_risk_percentage is not None:
+        pdf.cell(0, 8, _safe_text(f"Effective Risk Percentage: {analysis.effective_risk_percentage:.1f}%"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    # Gaze Distribution
+    if event_data:
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(0, 10, "Gaze Distribution", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 11)
+
+        # Table header
+        pdf.set_fill_color(240, 240, 240)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(100, 8, "Event Name", border=1, fill=True)
+        pdf.cell(50, 8, "Percentage (%)", border=1, fill=True, new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_font("Helvetica", "", 10)
+        for item in event_data:
+            name = item.get("event_name", "Unknown")
+            pct = item.get("percentage_in_video", 0)
+            pdf.cell(100, 7, _safe_text(str(name)), border=1)
+            pdf.cell(50, 7, _safe_text(f"{pct}%"), border=1, new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(6)
+
+    # AI Analysis Report
+    if analysis.analysis_report:
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(0, 10, "AI Analysis Report", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 6, _safe_text(analysis.analysis_report))
+        pdf.ln(6)
+
+    # Suspicious Events
+    events_list = [
+        {"label": e.get("event_name"), "timestamp": round(e.get("percentage_in_video", 0), 2)}
+        for e in event_data
+    ]
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, _safe_text(f"Suspicious Events ({len(events_list)} detected)"), new_x="LMARGIN", new_y="NEXT")
+
+    if events_list:
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.cell(15, 8, "#", border=1, fill=True)
+        pdf.cell(100, 8, "Event Label", border=1, fill=True)
+        pdf.cell(40, 8, "Timestamp (s)", border=1, fill=True, new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_font("Helvetica", "", 10)
+        for i, ev in enumerate(events_list):
+            pdf.cell(15, 7, str(i + 1), border=1)
+            pdf.cell(100, 7, _safe_text(str(ev["label"] or "N/A")), border=1)
+            pdf.cell(40, 7, str(ev["timestamp"]), border=1, new_x="LMARGIN", new_y="NEXT")
+    else:
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(0, 8, "No suspicious events detected.", new_x="LMARGIN", new_y="NEXT")
+
+    # Footer
+    pdf.ln(10)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.cell(0, 5, "Generated by BerriBot Interview Assessment Platform", new_x="LMARGIN", new_y="NEXT", align="C")
+
+    # Output as bytes
+    pdf_bytes = pdf.output()
+    buffer = BytesIO(pdf_bytes)
+    buffer.seek(0)
+
+    filename = f"gaze_report_interview_{interview_id}.pdf"
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.get("/{interview_id}/report/transcription-pdf")
+def download_transcription_report_pdf(
+    interview_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate and return a downloadable PDF report of the transcription
+    and scored Q&A segments for the given interview.
+    """
+    from fpdf import FPDF
+
+    # Fetch interview
+    interview = db.query(InterviewModel).filter(
+        InterviewModel.id == interview_id
+    ).first()
+    if not interview:
+        raise HTTPException(404, "Interview not found")
+
+    # Fetch transcription segments (scored)
+    rows = db.query(InterviewAnalysis).filter(
+        InterviewAnalysis.interview_id == interview_id,
+        InterviewAnalysis.question.isnot(None),
+    ).order_by(InterviewAnalysis.created_at.asc()).all()
+
+    if not rows:
+        raise HTTPException(404, "No transcription data available for this interview. Run transcription first.")
+
+    # Build PDF
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    # Title
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.cell(0, 12, _safe_text("Interview Transcription Report"), new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.ln(4)
+
+    # Interview Info
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 7, _safe_text(f"Interview: {interview.title or 'N/A'}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, _safe_text(f"Candidate: {interview.candidate_name or 'N/A'}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, _safe_text(f"Email: {interview.candidate_email or 'N/A'}"), new_x="LMARGIN", new_y="NEXT")
+    scheduled = interview.scheduled_at.strftime("%Y-%m-%d %H:%M UTC") if interview.scheduled_at else "N/A"
+    pdf.cell(0, 7, _safe_text(f"Scheduled At: {scheduled}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, _safe_text(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, _safe_text(f"Total Segments: {len(rows)}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(6)
+
+    # Separator
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
+
+    # Full Transcription (combine all answers)
+    full_text = " ".join((row.answer or "") for row in rows if row.answer)
+    if full_text.strip():
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(0, 10, "Full Transcription", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 6, _safe_text(full_text.strip()))
+        pdf.ln(6)
+
+        # Page break before segments
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(6)
+
+    # Scored Q&A Segments
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, "Scored Q&A Segments", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+
+    for i, row in enumerate(rows):
+        # Segment header
+        pdf.set_font("Helvetica", "B", 12)
+        score_text = f" | Score: {row.score:.1f}/10" if row.score is not None else ""
+        pdf.cell(0, 9, _safe_text(f"Segment {i + 1}{score_text}"), new_x="LMARGIN", new_y="NEXT")
+
+        # Question
+        if row.question:
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.cell(0, 7, "Question:", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "", 10)
+            pdf.multi_cell(0, 6, _safe_text(row.question))
+            pdf.ln(2)
+
+        # Answer
+        if row.answer:
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.cell(0, 7, "Answer:", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "", 10)
+            pdf.multi_cell(0, 6, _safe_text(row.answer))
+            pdf.ln(2)
+
+        # Score
+        if row.score is not None:
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.cell(25, 7, "Score: ")
+            pdf.set_font("Helvetica", "", 10)
+            pdf.cell(0, 7, _safe_text(f"{row.score:.1f} / 10"), new_x="LMARGIN", new_y="NEXT")
+
+        pdf.ln(4)
+        # Segment separator
+        pdf.set_draw_color(230, 230, 230)
+        pdf.line(15, pdf.get_y(), 195, pdf.get_y())
+        pdf.ln(4)
+
+    # Summary table
+    scores = [row.score for row in rows if row.score is not None]
+    if scores:
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(0, 10, "Score Summary", new_x="LMARGIN", new_y="NEXT")
+
+        avg_score = sum(scores) / len(scores)
+        max_score = max(scores)
+        min_score = min(scores)
+
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(0, 8, _safe_text(f"Average Score: {avg_score:.1f} / 10"), new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 8, _safe_text(f"Highest Score: {max_score:.1f} / 10"), new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 8, _safe_text(f"Lowest Score: {min_score:.1f} / 10"), new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 8, _safe_text(f"Total Segments Scored: {len(scores)}"), new_x="LMARGIN", new_y="NEXT")
+
+    # Footer
+    pdf.ln(10)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.cell(0, 5, "Generated by BerriBot Interview Assessment Platform", new_x="LMARGIN", new_y="NEXT", align="C")
+
+    # Output as bytes
+    pdf_bytes = pdf.output()
+    buffer = BytesIO(pdf_bytes)
+    buffer.seek(0)
+
+    filename = f"transcription_report_interview_{interview_id}.pdf"
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
